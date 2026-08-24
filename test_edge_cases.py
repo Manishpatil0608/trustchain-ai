@@ -5,8 +5,9 @@ import datetime
 engine = TrustEngine(TrustConfig())
 
 def make_event(s, c, l):
+    import uuid
     return TelemetryEvent(
-        agent_did="did", success=s, compliance_event=c, latency_ms=l, timestamp=datetime.datetime.now(datetime.timezone.utc)
+        agent_did="did", task_id=str(uuid.uuid4()), success=s, compliance_event=c, latency_ms=l, timestamp=datetime.datetime.now(datetime.timezone.utc)
     )
 
 print("Edge Cases Test")

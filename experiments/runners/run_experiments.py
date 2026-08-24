@@ -6,10 +6,12 @@ import random
 import json
 import sqlite3
 import time
+from datetime import datetime, timezone
 
 from akta.telemetry import TelemetryEvent, TestHarnessTelemetrySource
 from akta.vdr.database import Base, engine, SessionLocal
 from akta.vdr import trust_crud
+from akta.vdr import models
 from akta.trust_engine import TrustConfig, TrustState
 
 os.makedirs('experiments/configs', exist_ok=True)
@@ -37,9 +39,9 @@ def get_config():
 def run_h1(config):
     db = SessionLocal()
     # just clear db for isolation
-    db.execute(Base.metadata.tables['agent_trust_state'].delete())
-    db.execute(Base.metadata.tables['telemetry_log'].delete())
-    db.execute(Base.metadata.tables['trust_audit_trail'].delete())
+    db.execute(Base.metadata.tables['agent_trust_states'].delete())
+    db.execute(Base.metadata.tables['telemetry_logs'].delete())
+    db.execute(Base.metadata.tables['trust_audit_trails'].delete())
     db.commit()
 
     source = TestHarnessTelemetrySource()
@@ -90,7 +92,7 @@ def run_h1(config):
                     "success": success,
                     "compliance_event": compliance,
                     "latency_ms": latency,
-                    "timestamp": time.time()
+                    "timestamp": datetime.now(timezone.utc).timestamp()
                 }
                 
                 # B1 (Static): Always returns TRUSTED (False for QUARANTINED)
