@@ -33,3 +33,19 @@ class StoredVC(StoredVCBase):
     # id: int
     created_at: datetime
     updated_at: datetime
+
+
+class TelemetryPublishRequest(BaseModel):
+    agent_did: str
+    task_id: Optional[str] = None
+    success: bool
+    compliance_event: Optional[str] = None
+    latency_ms: int = 0
+    
+class TrustStateResponse(BaseModel):
+    agent_did: str
+    temporal_trust_score: float
+    trust_state: str
+    
+class RevocationRequest(BaseModel):
+    reason: str

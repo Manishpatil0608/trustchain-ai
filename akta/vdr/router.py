@@ -127,3 +127,64 @@ async def retrieve_vc(
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"An unexpected error occurred while retrieving the LDP VC: {type(e).__name__}")
+
+
+# ==========================================
+# TrustChain-AI Extensions
+# ==========================================
+from akta.telemetry import TelemetryEvent
+from akta.vdr import trust_crud
+from datetime import datetime, timezone
+import uuid
+
+@router.post("/trust/telemetry", response_model=vdr_schemas.TrustStateResponse)
+async def publish_telemetry(
+    request: vdr_schemas.TelemetryPublishRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Ingests an untrusted telemetry event from an execution context and recalculates the trust state.
+    """
+    event = TelemetryEvent(
+        agent_did=request.agent_did,
+        task_id=request.task_id or str(uuid.uuid4()),
+        success=request.success,
+        compliance_event=request.compliance_event,
+        latency_ms=request.latency_ms,
+        timestamp=datetime.now(timezone.utc)
+    )
+    
+    new_state = trust_crud.record_telemetry_and_update_trust(db, event)
+    return vdr_schemas.TrustStateResponse(
+        agent_did=new_state.did,
+        temporal_trust_score=new_state.temporal_trust_score,
+        trust_state=new_state.trust_state
+    )
+
+@router.get("/trust/state/{did}", response_model=vdr_schemas.TrustStateResponse)
+async def get_trust_state(
+    did: str,
+    db: Session = Depends(get_db)
+):
+    state = trust_crud.get_trust_state(db, did)
+    return vdr_schemas.TrustStateResponse(
+        agent_did=state.did,
+        temporal_trust_score=state.temporal_trust_score,
+        trust_state=state.trust_state
+    )
+
+@router.post("/trust/revoke/{did}", response_model=vdr_schemas.TrustStateResponse)
+async def revoke_trust(
+    did: str,
+    request: vdr_schemas.RevocationRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Administrative endpoint to explicitly revoke a credential/agent context due to security compromise.
+    """
+    state = trust_crud.revoke_agent(db, did, reason=request.reason)
+    return vdr_schemas.TrustStateResponse(
+        agent_did=state.did,
+        temporal_trust_score=state.temporal_trust_score,
+        trust_state=state.trust_state
+    )
