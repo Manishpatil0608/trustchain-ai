@@ -132,7 +132,7 @@ async def retrieve_vc(
 # ==========================================
 # TrustChain-AI Extensions
 # ==========================================
-from akta.telemetry import TelemetryEvent
+from akta.telemetry import TelemetryEvent, TestHarnessTelemetrySource
 from akta.vdr import trust_crud
 from datetime import datetime, timezone
 import uuid
@@ -145,14 +145,8 @@ async def publish_telemetry(
     """
     Ingests an untrusted telemetry event from an execution context and recalculates the trust state.
     """
-    event = TelemetryEvent(
-        agent_did=request.agent_did,
-        task_id=request.task_id or str(uuid.uuid4()),
-        success=request.success,
-        compliance_event=request.compliance_event,
-        latency_ms=request.latency_ms,
-        timestamp=datetime.now(timezone.utc)
-    )
+    source = TestHarnessTelemetrySource()
+    event = source.ingest(request.dict())
     
     new_state = trust_crud.record_telemetry_and_update_trust(db, event)
     return vdr_schemas.TrustStateResponse(
@@ -187,4 +181,25 @@ async def revoke_trust(
         agent_did=state.did,
         temporal_trust_score=state.temporal_trust_score,
         trust_state=state.trust_state
-    )
+    )
+
+@router.get("/trust/audit/{did}")
+async def get_audit(did: str, db: Session = Depends(get_db)):
+    audits = trust_crud.get_trust_audit(db, did)
+    return [{"id": a.id, "previous_state": a.previous_state, "new_state": a.new_state, "reason": a.reason, "timestamp": a.timestamp} for a in audits]
+
+@router.get("/trust/dashboard")
+async def get_dashboard(db: Session = Depends(get_db)):
+    from akta.vdr import models
+    states = db.query(models.AgentTrustStateModel).all()
+    dashboard = []
+    for s in states:
+        event_count = db.query(models.TelemetryLogModel).filter(models.TelemetryLogModel.agent_did == s.did).count()
+        dashboard.append({
+            "agent_did": s.did,
+            "trust_score": s.temporal_trust_score,
+            "trust_state": s.trust_state,
+            "last_updated": s.last_updated,
+            "telemetry_events": event_count
+        })
+    return {"agents": dashboard}

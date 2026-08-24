@@ -26,6 +26,12 @@ class TrustConfig(BaseModel):
         super().__init__(**data)
         if abs(self.w1 + self.w2 + self.w3 - 1.0) > 1e-6:
             raise ValueError("Weights w1, w2, w3 must sum to 1.0")
+        if not (0.0 <= self.w1 <= 1.0) or not (0.0 <= self.w2 <= 1.0) or not (0.0 <= self.w3 <= 1.0):
+            raise ValueError("Weights must be in [0,1]")
+        if not (0.0 <= self.lam <= 1.0):
+            raise ValueError("Lambda must be between 0 and 1")
+        if self.trusted_threshold <= self.suspicious_threshold:
+            raise ValueError("Trusted threshold must be greater than suspicious threshold")
 
 
 class TrustEngine:

@@ -1,0 +1,3 @@
+B3 F1-Score: 0.405
+B1 F1-Score: 0.000
+Detection Time: 13.47 ± 6.20 steps

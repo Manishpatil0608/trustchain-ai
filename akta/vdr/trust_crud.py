@@ -130,3 +130,9 @@ def revoke_agent(db: Session, did: str, reason: str = "Admin revocation") -> mod
         db.commit()
         db.refresh(state)
     return state
+
+def get_trust_audit(db: Session, did: str):
+    return db.query(models.TrustAuditTrailModel).filter(
+        models.TrustAuditTrailModel.agent_did == did
+    ).order_by(desc(models.TrustAuditTrailModel.timestamp)).all()
+

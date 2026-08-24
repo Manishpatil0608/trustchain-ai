@@ -1,21 +1,45 @@
-import uuid
-from datetime import datetime, timezone
-from typing import Optional, Dict, Any, List
-from pydantic import BaseModel, Field
+from dataclasses import dataclass
+from typing import Optional
+from enum import Enum
+import time
 
-class TelemetryEvent(BaseModel):
-    agent_did: str = Field(..., description="DID of the agent that performed the action")
-    task_id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="Unique identifier for the task execution")
-    success: bool = Field(..., description="Whether the task was successful")
-    compliance_event: Optional[str] = Field(None, description="Any protocol compliance issue detected (empty/None if compliant)")
-    latency_ms: int = Field(default=0, description="Execution latency in milliseconds")
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="When the event occurred")
-    metadata: Optional[Dict[str, Any]] = Field(None, description="Optional metadata")
+@dataclass
+class TelemetryEvent:
+    agent_did: str
+    task_id: str
+    success: bool
+    compliance_event: bool
+    latency_ms: float
+    timestamp: float
 
-class TelemetryCollector:
+class TelemetrySource:
     """
-    Abstract collector for telemetry events.
-    In the prototype, this will likely push events directly to the database or trigger the TrustEngine.
+    Abstract interface for secure telemetry ingestion.
+    This separates the mathematical trust engine from the physical source of telemetry.
     """
-    def record_event(self, event: TelemetryEvent) -> None:
-        raise NotImplementedError("Subclasses must implement record_event")
+    def ingest(self, raw_payload: dict) -> TelemetryEvent:
+        raise NotImplementedError("Must implement ingest mechanism")
+
+
+class TestHarnessTelemetrySource(TelemetrySource):
+    """
+    Current unauthenticated test harness source used for experimental evaluation.
+    WARNING: Not for production use. Lacks cryptographic attestation.
+    """
+    def ingest(self, raw_payload: dict) -> TelemetryEvent:
+        return TelemetryEvent(
+            agent_did=raw_payload.get("agent_did"),
+            task_id=raw_payload.get("task_id", "unknown"),
+            success=raw_payload.get("success", False),
+            compliance_event=raw_payload.get("compliance_event", True),
+            latency_ms=raw_payload.get("latency_ms", 0.0),
+            timestamp=raw_payload.get("timestamp", time.time())
+        )
+
+# FUTURE WORK:
+# class SignedTelemetrySource(TelemetrySource):
+#    def ingest(self, raw_payload: dict) -> TelemetryEvent:
+#        # 1. Verify JWS/Ed25519 signature
+#        # 2. Prevent replay attacks using nonces/timestamps
+#        # 3. Return verified TelemetryEvent
+#        pass
