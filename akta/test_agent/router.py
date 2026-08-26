@@ -413,8 +413,73 @@ async def generate_map(params: MapGenerationParams, verified_vc_model: Verifiabl
         logger.error(f"received skill scope: {presented_cs_model.skills[0].scope}")
         raise HTTPException(status_code=403, detail="Skill 'map:generate' not granted or not found in the presented VC.")
 
+    # --- TRUSTCHAIN-AI ADAPTIVE AUTHORIZATION ---
+    from akta.vdr.database import SessionLocal
+    from akta.adaptive_auth import AdaptivePolicyEnforcer, AuthorizationError
+    
+    agent_did = presented_cs_model.id
+    if agent_did:
+        db = SessionLocal()
+        try:
+            # We skip full VC signature re-verification here since get_final_verified_vc did it,
+            # but we explicitly trigger the behavioral Trust State check.
+            from akta.vdr import trust_crud
+            from akta.trust_engine import TrustState
+            
+            trust_state = trust_crud.get_trust_state(db, agent_did)
+            state_enum = TrustState(trust_state.trust_state)
+            
+            if state_enum == TrustState.QUARANTINED:
+                raise HTTPException(status_code=403, detail=f"Trust Policy Violation: Agent {agent_did} is currently QUARANTINED due to poor behavioral history.")
+            elif state_enum == TrustState.REVOKED:
+                raise HTTPException(status_code=403, detail=f"Trust Policy Violation: Agent {agent_did} has been administratively REVOKED.")
+                
+            logger.info(f"Trust verification passed for Agent {agent_did}. Current state: {state_enum.value}")
+        finally:
+            db.close()
+    else:
+        logger.warning("No subject DID found in VC to enforce behavioral trust.")
+    # --------------------------------------------
+
     logger.info(f"/map/generate API call authorized for VC ID: {verified_vc_model.id}, Subject: {presented_cs_model.id}")
     logger.info(f"Map generation requested with region: '{params.region}', style: '{params.style}'.")
+
+    # Determine if we simulate failure or latency based on style parameter
+    success = True
+    compliance_violation = False
+    latency = 50
+    if params.style == "sim_failure":
+        success = False
+    elif params.style == "sim_violation":
+        success = False
+        compliance_violation = True
+    elif params.style == "sim_timeout":
+        latency = 3000
+    
+    # Emit Telemetry
+    if agent_did:
+        from akta.vdr import trust_crud
+        from akta.telemetry import TelemetryEvent, TestHarnessTelemetrySource
+        from akta.vdr.database import SessionLocal
+        
+        db = SessionLocal()
+        try:
+            import uuid
+            source = TestHarnessTelemetrySource()
+            event = source.ingest({
+                "agent_did": agent_did,
+                "task_id": str(uuid.uuid4()),
+                "success": success,
+                "compliance_event": compliance_violation,
+                "latency_ms": latency
+            })
+            trust_crud.record_telemetry_and_update_trust(db, event)
+            logger.info(f"Telemetry emitted for {agent_did}: success={success}")
+        finally:
+            db.close()
+            
+    if not success:
+        raise HTTPException(status_code=500, detail="Simulated task failure during map generation.")
 
     return MapGenerationResponse(
         status=f"✅ Map generation initiated for region: {params.region}, style: {params.style}!",

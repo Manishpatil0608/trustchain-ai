@@ -16,13 +16,16 @@ AGENT_DID = f"did:key:zTrustChainTestAgent{uuid.uuid4().hex[:8]}"
 print(f"===== TrustChain-AI Logic Tests =====")
 print(f"Using Agent DID: {AGENT_DID}\n")
 
-def send_telemetry(success, compliance_event, latency_ms):
+def send_telemetry(success: bool, compliance: bool, latency: float):
+    import uuid
+    dt = datetime.now(timezone.utc)
     event = TelemetryEvent(
         agent_did=AGENT_DID,
+        task_id=str(uuid.uuid4()),
         success=success,
-        compliance_event=compliance_event,
-        latency_ms=latency_ms,
-        timestamp=datetime.now(timezone.utc)
+        compliance_event=compliance,
+        latency_ms=latency,
+        timestamp=dt
     )
     return trust_crud.record_telemetry_and_update_trust(db, event)
 

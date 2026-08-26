@@ -39,7 +39,7 @@ class TelemetryPublishRequest(BaseModel):
     agent_did: str
     task_id: Optional[str] = None
     success: bool
-    compliance_event: Optional[str] = None
+    compliance_event: bool = False
     latency_ms: int = 0
     
 class TrustStateResponse(BaseModel):

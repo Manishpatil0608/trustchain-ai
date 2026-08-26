@@ -2,7 +2,7 @@ import requests
 import time
 import uuid
 
-BASE_URL = "http://localhost:8050/api/v1/trust"
+BASE_URL = "http://127.0.0.1:8050/api/v1/trust"
 AGENT_DID = f"did:key:zTrustChainTestAgent{int(time.time())}"
 
 print(f"===== TrustChain-AI Integration Tests =====")
@@ -11,8 +11,9 @@ print(f"Using Agent DID: {AGENT_DID}\n")
 def send_telemetry(success, compliance_event, latency_ms):
     payload = {
         "agent_did": AGENT_DID,
+        "task_id": str(uuid.uuid4()),
         "success": success,
-        "compliance_event": compliance_event,
+        "compliance_event": compliance_event if compliance_event is not None else False,
         "latency_ms": latency_ms
     }
     requests.post(f"{BASE_URL}/telemetry", json=payload)
@@ -45,7 +46,7 @@ def test_2():
 def test_3():
     print("TEST 3, 4, 7: Protocol violations + Latency -> QUARANTINED")
     for _ in range(10):
-        send_telemetry(False, "invalid_scope", 2500)
+        send_telemetry(False, True, 2500)
     state = get_state()
     print(f"Score: {state['temporal_trust_score']}, State: {state['trust_state']}")
     assert state['trust_state'] == "QUARANTINED"

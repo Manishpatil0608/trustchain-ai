@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     Settings are loaded from multiple sources with a defined priority (see `settings_customise_sources`).
     """
     # Server settings
-    host: str = Field(default="0.0.0.0", description="Host to bind the FastAPI server to.")
+    host: str = Field(default="127.0.0.1", description="Host to bind the FastAPI server to.")
     port: int = Field(default=8050, description="Port to bind the FastAPI server to.")
     reload: bool = Field(default=False, description="Enable auto-reload for the FastAPI server (for development). Uvicorn's --reload flag.")
 
