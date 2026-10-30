@@ -40,6 +40,24 @@ class Settings(BaseSettings):
         description="Database connection URL. Example: 'postgresql://user:pass@host:port/dbname' or 'sqlite:///./app.db'."
     )
 
+    # Security & Authentication settings
+    auth_secret: str = Field(
+        default="dev_secret_trustchain_ai_capstone_project_2026_key_32_bytes_min!",
+        description="JWT signing secret key."
+    )
+    access_token_expire_minutes: int = Field(default=30, description="Access token TTL in minutes.")
+    refresh_token_expire_days: int = Field(default=7, description="Refresh token TTL in days.")
+    login_max_attempts: int = Field(default=5, description="Maximum failed login attempts before lockout.")
+    login_lockout_minutes: int = Field(default=15, description="Lockout duration in minutes.")
+    cors_allowed_origins: str = Field(
+        default="http://localhost:5173,http://127.0.0.1:5173,http://localhost:8050",
+        description="Comma-separated list of allowed CORS origins."
+    )
+    dev_auto_seed_admin: bool = Field(
+        default=True,
+        description="Automatically seed a default admin user (admin / Admin@TrustChain2026!) in development mode if no admin exists."
+    )
+
     model_config = SettingsConfigDict(
         env_prefix="APP_", # Prefix for environment variables (e.g., APP_HOST, APP_PORT)
         extra="ignore",    # Ignore extra fields from sources rather than raising an error

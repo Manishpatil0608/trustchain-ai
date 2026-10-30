@@ -421,20 +421,14 @@ async def generate_map(params: MapGenerationParams, verified_vc_model: Verifiabl
     if agent_did:
         db = SessionLocal()
         try:
-            # We skip full VC signature re-verification here since get_final_verified_vc did it,
-            # but we explicitly trigger the behavioral Trust State check.
-            from akta.vdr import trust_crud
-            from akta.trust_engine import TrustState
-            
-            trust_state = trust_crud.get_trust_state(db, agent_did)
-            state_enum = TrustState(trust_state.trust_state)
-            
-            if state_enum == TrustState.QUARANTINED:
-                raise HTTPException(status_code=403, detail=f"Trust Policy Violation: Agent {agent_did} is currently QUARANTINED due to poor behavioral history.")
-            elif state_enum == TrustState.REVOKED:
-                raise HTTPException(status_code=403, detail=f"Trust Policy Violation: Agent {agent_did} has been administratively REVOKED.")
-                
-            logger.info(f"Trust verification passed for Agent {agent_did}. Current state: {state_enum.value}")
+            from akta.adaptive_auth import AdaptivePolicyEnforcer, AuthorizationError
+            op = "sensitive:execute" if getattr(params, "style", "") == "privileged" else "map:generate"
+            try:
+                AdaptivePolicyEnforcer.check_agent_authorization(agent_did, db, operation=op)
+            except AuthorizationError as e:
+                raise HTTPException(status_code=403, detail=str(e))
+
+            logger.info(f"Trust verification passed for Agent {agent_did}. Operation '{op}' authorized.")
         finally:
             db.close()
     else:

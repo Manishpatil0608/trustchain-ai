@@ -1,0 +1,61 @@
+flowchart TD
+    %% TrustChain-AI: Complete Project Workflow (End-to-End Lifecycle)
+
+    subgraph SG1["1. System Boot & Health Initialization"]
+        B1["Start Uvicorn ASGI Server (Port 8050)"] --> B2["Initialize SQLite VDR (vdr.db in WAL Mode)"]
+        B2 --> B3["Verify System Health via GET /health\n(FastAPI: ok, DB WAL latency: <5ms, Trust Engine: ok)"]
+        B3 --> B4["Launch React 19 Frontend (Vite 8 — Port 5173)"]
+        B4 --> B5["Admin / Operator Login (Argon2id Verify -> Issue JWT Access & Refresh)"]
+    end
+
+    subgraph SG2["2. Identity Genesis & Agent Registration"]
+        B5 --> I1["Submit Agent Profile (POST /registry/agents)\n{agent_name, capabilities, endpoint}"]
+        I1 --> I2["Derive W3C DID:key via PyNaCl Ed25519\n(Multicodec 0xED01 + Base58 z-prefix)"]
+        I2 --> I3["Issue Verifiable Credential (Ed25519Signature2020)\nwith URDNA2015 JSON-LD Proof"]
+        I3 --> I4["Persist Agent in 'agents' Table & Store VC in 'stored_vcs'"]
+        I4 --> I5["Initialize Trust Baseline in 'agent_trust_states'\n(T_0 = 1.0, State = TRUSTED)"]
+    end
+
+    subgraph SG3["3. Capability Discovery & Trust Matching"]
+        I5 --> D1["Orchestrator Requests Discovery (GET /registry/agents/discovery)\n{required_capability: 'analysis', min_trust: 0.5}"]
+        D1 --> D2["Filter Registry for AVAILABLE Agents with Matching Capabilities"]
+        D2 --> D3{"Check Trust State in VDR"}
+        D3 -->|QUARANTINED or REVOKED| D4["Drop Candidate from Eligible Match Pool"]
+        D3 -->|TRUSTED or SUSPICIOUS| D5["Compute Multi-Factor Match Score:\nmatch_score = 0.4*T + 0.3*(r/5) + 0.2*σ + 0.1*(1 - λ)"]
+        D5 --> D6["Sort Candidates Descending & Return Ranked Pool"]
+    end
+
+    subgraph SG4["4. Collaboration & Sequential Workflow Execution"]
+        D6 --> W1["Select Top Match Agent & Initiate Workflow (POST /registry/workflows)"]
+        W1 --> W2["Adaptive Policy Check: enforce_policy(agent_did, 'workflow:execute')"]
+        W2 --> W3{"Is Op Permitted?"}
+        W3 -->|No: Quarantined / Suspicious Privileged| W4["Halt Execution (HTTP 403 Forbidden)\nWrite Security Audit Event"]
+        W3 -->|Yes: Permitted| W5["Execute Node 0 via LocalAgentConnector\n(Structured Capability Engine)"]
+        W5 --> W6["Pipe Node 0 Output as Input to Node 1"]
+        W6 --> W7["Execute Node 1 -> Pipe to Node 2 -> Complete Sequential Chain"]
+        W7 --> W8["Persist Results in 'workflows' and 'workflow_nodes'"]
+    end
+
+    subgraph SG5["5. Telemetry Ingestion & Dynamic Trust Evaluation"]
+        W8 --> T1["Emit Execution Telemetry (POST /registry/telemetry)\n{task_id, success: bool, compliance: bool, latency_ms}"]
+        T1 --> T2["Append Observation to 'telemetry_logs'"]
+        T2 --> T3["Query Last 10 Telemetry Records for Agent"]
+        T3 --> T4["Compute S_i(t) = success/n, C_i(t) = comp/n, L_i(t) = min(lat/2000, 1.0)"]
+        T4 --> T5["Calculate Composite Performance Score:\nP_i(t) = 0.6*S_i + 0.3*C_i + 0.1*(1 - L_i)"]
+        T5 --> T6["Calculate Exponential Moving Average:\nT_i(t) = 0.7*P_i(t) + 0.3*T_i(t-1)"]
+    end
+
+    subgraph SG6["6. State Machine Classification & Platform Governance"]
+        T6 --> S1{"Evaluate T_i(t) Threshold"}
+        S1 -->|T >= 0.8| S2["Classify as TRUSTED\nUnrestricted Access to Privileged & Standard Ops"]
+        S1 -->|0.5 <= T < 0.8| S3["Classify as SUSPICIOUS\nPrivileged Ops Denied; Standard Ops Allowed with Audit"]
+        S1 -->|T < 0.5| S4["Classify as QUARANTINED\nAll Operations Blocked; Excluded from Workflows"]
+        
+        AdminRevoke["Admin Revocation Direct Action\n(POST /registry/agents/{id}/revoke)"] --> S5["Classify as REVOKED\nTerminal State: Irreversible Lockout"]
+        
+        S2 --> S6["Update 'agent_trust_states' & Append to 'trust_audit_trails'"]
+        S3 --> S6
+        S4 --> S6
+        S5 --> S6
+        S6 --> S7["Expose Real-time Metrics to React Dashboard & Next Request Cycle"]
+    end

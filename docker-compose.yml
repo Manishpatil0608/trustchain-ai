@@ -1,0 +1,44 @@
+version: "3.8"
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: trustchain-backend
+    restart: unless-stopped
+    ports:
+      - "8050:8050"
+    environment:
+      - APP_HOST=0.0.0.0
+      - APP_PORT=8050
+      - APP_DEBUG=False
+      - APP_LOG_LEVEL=INFO
+      - APP_DATABASE_URL=sqlite:////app/data/vdr.db
+      - APP_AUTH_SECRET=dev_secret_trustchain_ai_capstone_project_2026_key_32_bytes_min!
+      - APP_DEV_AUTO_SEED_ADMIN=True
+      - APP_CORS_ALLOWED_ORIGINS=http://localhost:5173,http://localhost:80,http://127.0.0.1:5173,http://localhost:8050
+    volumes:
+      - tc_vdr_data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8050/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: trustchain-frontend
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  tc_vdr_data:
+    driver: local

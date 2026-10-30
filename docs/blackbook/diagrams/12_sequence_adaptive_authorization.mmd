@@ -1,0 +1,49 @@
+sequenceDiagram
+    %% TrustChain-AI: Sequence Diagram — Adaptive Policy Authorization Enforcement
+
+    autonumber
+    actor Client as Invoking Client / Orchestrator
+    participant API as FastAPI Router (/registry)
+    participant Enforcer as AdaptivePolicyEnforcer (adaptive_auth.py)
+    participant DB as SQLite VDR (agent_trust_states)
+    participant SecAudit as Security Audit Service (security_audit_events)
+    participant Service as Protected Backend Subsystem
+
+    Client->>API: Operation Request (agent_did, operation_name, payload)
+    API->>Enforcer: enforce_policy(agent_did, operation_name)
+    Enforcer->>DB: Query agent_trust_states WHERE did = agent_did
+    DB-->>Enforcer: Record: {trust_state, temporal_trust_score}
+
+    %% State Evaluation Cases
+    alt Agent Trust State == REVOKED
+        Enforcer->>SecAudit: Log Security Event (REVOKED_ACCESS_ATTEMPT, agent_did, operation)
+        Enforcer-->>API: raise AuthorizationError("Agent is REVOKED: Terminal Administrative Lockout")
+        API-->>Client: HTTP 403 Forbidden {detail: "Agent permanently revoked"}
+
+    else Agent Trust State == QUARANTINED (T < 0.5)
+        Enforcer->>SecAudit: Log Security Event (QUARANTINED_ACCESS_ATTEMPT, agent_did, operation)
+        Enforcer-->>API: raise AuthorizationError("Agent is QUARANTINED: Trust Score Insufficient")
+        API-->>Client: HTTP 403 Forbidden {detail: "Agent quarantined due to behavioral degradation"}
+
+    else Agent Trust State == SUSPICIOUS (0.5 <= T < 0.8)
+        Enforcer->>Enforcer: Check Operation Classification
+        
+        alt Operation in PRIVILEGED_OPERATIONS<br/>(workflow:execute, credential:issue, agent:delegate, admin:revoke)
+            Enforcer->>SecAudit: Log Security Event (SUSPICIOUS_PRIVILEGE_DENIED, agent_did, operation)
+            Enforcer-->>API: raise AuthorizationError("SUSPICIOUS agent denied privileged operation")
+            API-->>Client: HTTP 403 Forbidden {detail: "Privileged operation prohibited for suspicious agents"}
+        else Operation in STANDARD_OPERATIONS<br/>(read, task:execute, collaboration:step, query)
+            Enforcer->>SecAudit: Log Security Event (SUSPICIOUS_STANDARD_PERMITTED_WITH_MONITORING)
+            Enforcer-->>API: Policy Decision: PERMITTED (Monitored)
+            API->>Service: Execute requested standard task
+            Service-->>API: Execution Result
+            API-->>Client: HTTP 200 OK with Task Result & Trust Warning
+        end
+
+    else Agent Trust State == TRUSTED (T >= 0.8)
+        Enforcer->>SecAudit: Log Security Event (TRUSTED_OPERATION_PERMITTED)
+        Enforcer-->>API: Policy Decision: PERMITTED (Full Access)
+        API->>Service: Dispatch operation to target execution service
+        Service-->>API: Execution Result
+        API-->>Client: HTTP 200 OK {status: "success", data: Execution Result}
+    end

@@ -1,0 +1,58 @@
+sequenceDiagram
+    %% TrustChain-AI: Sequence Diagram — Verifiable Credential (VC) Lifecycle
+
+    autonumber
+    actor Issuer as Credential Issuer (Operator/Authority)
+    actor Holder as Credential Holder (Agent Subject)
+    participant VDR_API as FastAPI /vdr Router
+    participant VC_Engine as VerifiableCredential Engine (credentials.py)
+    participant LD_Canon as PyLD URDNA2015 Canonicalizer
+    participant Crypto as PyNaCl Ed25519 Signer
+    participant DB as SQLite VDR (stored_vcs)
+    actor Verifier as Relying Party / Verifier Agent
+
+    %% Phase 1: Credential Issuance & Signing
+    rect rgb(240, 248, 255)
+        Note over Issuer, DB: Phase 1: VC Generation, Canonicalization & Signing
+        Issuer->>VDR_API: POST /vdr/credentials/issue (issuer_did, subject_did, claims, expiration)
+        VDR_API->>VC_Engine: create_verifiable_credential(data)
+        VC_Engine->>VC_Engine: Construct W3C VC JSON-LD (@context, id, type, issuer, credentialSubject)
+        VC_Engine->>LD_Canon: canonicalize(doc_without_proof, algorithm="URDNA2015")
+        LD_Canon-->>VC_Engine: Normalized N-Quads Canonical Form
+        VC_Engine->>Crypto: Compute SHA-256 hash & Sign with Issuer Ed25519 Private Key
+        Crypto-->>VC_Engine: 64-byte Ed25519 Signature
+        VC_Engine->>VC_Engine: Encode signature via Base58 (proofValue)
+        VC_Engine->>VC_Engine: Append proof block (type: Ed25519Signature2020, verificationMethod)
+        VC_Engine->>DB: INSERT into stored_vcs (vc_id, issuer_did, subject_did, ldp_vc_json)
+        DB-->>VC_Engine: Confirmation
+        VC_Engine-->>VDR_API: Complete Signed Verifiable Credential
+        VDR_API-->>Issuer: HTTP 201 Created with VC Payload
+        Issuer->>Holder: Deliver Issued VC to Agent Wallet
+    end
+
+    %% Phase 2: Credential Presentation & Verification
+    rect rgb(245, 255, 245)
+        Note over Holder, Verifier: Phase 2: Verification of Cryptographic Proof
+        Holder->>Verifier: Present Verifiable Credential for Task Authorization
+        Verifier->>VDR_API: POST /vdr/credentials/verify (ldp_vc_json)
+        VDR_API->>VC_Engine: verify_credential(ldp_vc_json)
+        VC_Engine->>VC_Engine: Separate proof block from document body
+        VC_Engine->>LD_Canon: canonicalize(document_body, algorithm="URDNA2015")
+        LD_Canon-->>VC_Engine: Normalized Canonical Document
+        VC_Engine->>VC_Engine: Extract issuer_did & decode public key from verificationMethod
+        VC_Engine->>Crypto: PyNaCl VerifyKey.verify(canonical_doc_hash, signature)
+        
+        alt Signature Matches & Issuer Key Valid
+            Crypto-->>VC_Engine: Cryptographic Verification PASSED
+            VC_Engine->>DB: Query stored_vcs (check expiration & revocation status)
+            DB-->>VC_Engine: Record active & unexpired
+            VC_Engine-->>VDR_API: VerificationResult(valid=True, issuer, subject)
+            VDR_API-->>Verifier: HTTP 200 OK: Credential Cryptographically Valid
+            Verifier->>Holder: Grant Collaboration / Proceed to Behavioral Trust Check
+        else Signature Mismatch / Tampered Claims
+            Crypto-->>VC_Engine: Verification FAILED
+            VC_Engine-->>VDR_API: VerificationResult(valid=False, error="Invalid signature")
+            VDR_API-->>Verifier: HTTP 400 Bad Request: Cryptographic Proof Forged
+            Verifier->>Holder: Reject Task Execution (Security Alert)
+        end
+    end

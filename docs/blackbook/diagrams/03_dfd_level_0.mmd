@@ -1,0 +1,32 @@
+flowchart LR
+    %% TrustChain-AI: Data Flow Diagram — Level 0 (Context Level)
+
+    %% External Entities
+    E_Admin["System Administrator"]
+    E_Operator["Platform Operator"]
+    E_Viewer["Auditor / Viewer"]
+    E_ReqAgent["Requester Agent"]
+    E_WorkerAgent["Worker / Target Agent"]
+
+    %% Central Process
+    P0(("0.0\nTrustChain-AI\nTrust Intelligence\nPlatform"))
+
+    %% Data Flows: Administrator
+    E_Admin -->|"Credentials, User Management Requests,\nRevocation Directives"| P0
+    P0 -->|"JWT Tokens, User Roster,\nSecurity Audit Logs, Revocation Status"| E_Admin
+
+    %% Data Flows: Operator
+    E_Operator -->|"Agent Profiles, Workflow Specs,\nCollaboration Requests, Manual Telemetry"| P0
+    P0 -->|"Registration Receipts, Execution Outputs,\nTrust Analytics, Collaboration State"| E_Operator
+
+    %% Data Flows: Viewer
+    E_Viewer -->|"Read-Only Queries, Health Inquiries"| P0
+    P0 -->|"Telemetry Graphs, Trust Metrics,\nSystem Health Responses"| E_Viewer
+
+    %% Data Flows: Requester Agent
+    E_ReqAgent -->|"Capability Discovery Requests,\nWorkflow Execution Triggers,\nVC Presentation Proofs"| P0
+    P0 -->|"Ranked Candidates, Policy Decisions,\nTask Execution Results"| E_ReqAgent
+
+    %% Data Flows: Worker Agent
+    E_WorkerAgent -->|"Task Responses, Runtime Telemetry\n(Success, Compliance, Latency)"| P0
+    P0 -->|"Task Dispatches, Authorization Gating,\nQuarantine / Trust Status"| E_WorkerAgent

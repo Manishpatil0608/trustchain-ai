@@ -1,0 +1,79 @@
+sequenceDiagram
+    %% TrustChain-AI: Sequence Diagram — User Authentication & Identity Verification
+
+    autonumber
+    actor User as Human User / Agent
+    participant UI as React Frontend (Axios)
+    participant AuthAPI as FastAPI /auth Router
+    participant SecService as Auth & Security Service
+    participant Crypto as Argon2id & PyJWT Engine
+    participant DB as SQLite VDR (users, tokens, audit)
+
+    %% Scenario 1: Initial Login Flow
+    rect rgb(240, 248, 255)
+        Note over User, DB: Scenario 1: Standard User Login & Token Issuance
+        User->>UI: Enter username and password
+        UI->>AuthAPI: POST /auth/login (username, password)
+        AuthAPI->>SecService: authenticate_user(username, password)
+        SecService->>DB: Query UserModel by username
+        DB-->>SecService: User record (password_hash, failed_attempts, locked_until)
+
+        alt Account Locked (failed_attempts >= 5)
+            SecService-->>AuthAPI: AccountLockedError (HTTP 403)
+            AuthAPI->>DB: Insert security_audit_event (LOCKOUT_ATTEMPT)
+            AuthAPI-->>UI: 403 Forbidden: Account locked
+            UI-->>User: Display lockout warning
+        else Password Valid
+            SecService->>Crypto: argon2.verify(password, password_hash)
+            Crypto-->>SecService: Verification Successful
+            SecService->>Crypto: Generate JWT Access Token (30m TTL, HS256)
+            SecService->>Crypto: Generate Refresh Token (7d TTL, UUID JTI)
+            SecService->>DB: Reset failed_attempts=0, update last_login_at
+            SecService->>DB: Insert RefreshTokenModel (jti, user_id, hash, expires_at)
+            SecService->>DB: Insert security_audit_event (LOGIN_SUCCESS)
+            SecService-->>AuthAPI: {access_token, refresh_token, token_type: Bearer, role}
+            AuthAPI-->>UI: HTTP 200 OK with Token Payload
+            UI-->>User: Redirect to DashboardHome based on role (ADMIN/OPERATOR/VIEWER)
+        end
+    end
+
+    %% Scenario 2: Token Refresh with Rotation
+    rect rgb(255, 250, 240)
+        Note over User, DB: Scenario 2: Refresh Token Rotation & Reuse Detection
+        UI->>AuthAPI: POST /auth/refresh (refresh_token)
+        AuthAPI->>SecService: rotate_refresh_token(refresh_token)
+        SecService->>Crypto: Decode and extract JTI
+        SecService->>DB: Query RefreshTokenModel by JTI
+
+        alt Token Already Revoked / Replaced (Replay Attack Detected)
+            DB-->>SecService: Record found with revoked_at != NULL
+            SecService->>DB: Insert security_audit_event (REUSE_DETECTED, HIGH_SEVERITY)
+            SecService-->>AuthAPI: SecurityAlert: Refresh token reuse detected
+            AuthAPI-->>UI: HTTP 401 Unauthorized (Session Terminated)
+            UI-->>User: Force Logout & Redirect to Login
+        else Token Active & Valid
+            DB-->>SecService: Valid RefreshTokenModel record
+            SecService->>DB: Mark old token revoked_at=now(), replaced_by=new_jti
+            SecService->>Crypto: Generate new Access Token (30m) & new Refresh Token (7d)
+            SecService->>DB: Store new RefreshTokenModel record
+            SecService->>DB: Insert security_audit_event (REFRESH_SUCCESS)
+            SecService-->>AuthAPI: {access_token, refresh_token}
+            AuthAPI-->>UI: HTTP 200 OK with new tokens
+        end
+    end
+
+    %% Scenario 3: Agent DID:key Signature Verification
+    rect rgb(245, 255, 245)
+        Note over User, DB: Scenario 3: Autonomous Agent DID:key Authentication
+        User->>AuthAPI: POST /registry/verify-caller (X-Agent-DID, Signature, Nonce)
+        AuthAPI->>Crypto: Parse DID URI (did:key:z6M...)
+        Crypto->>Crypto: Extract multicodec prefix 0xED01 & 32-byte public key
+        Crypto->>Crypto: PyNaCl VerifyKey.verify(Nonce, Signature)
+        alt Signature Valid
+            Crypto-->>AuthAPI: Signature Verified
+            AuthAPI-->>User: Caller Authenticated (DID Identity Confirmed)
+        else Signature Invalid
+            Crypto-->>AuthAPI: Verification Failed
+            AuthAPI-->>User: HTTP 401 Unauthorized (Invalid Agent Proof)
+        end
+    end

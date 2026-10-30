@@ -1,0 +1,81 @@
+flowchart LR
+    %% TrustChain-AI: Use Case Diagram
+
+    subgraph Actors["Primary Actors"]
+        Admin["System Administrator\n(ADMIN Role)"]
+        Operator["Platform Operator\n(OPERATOR Role)"]
+        Viewer["Auditor / Observer\n(VIEWER Role)"]
+        Agent["Autonomous Agent\n(Requester / Worker)"]
+    end
+
+    subgraph SystemBoundary["TrustChain-AI Platform Boundary"]
+        subgraph UC_Auth["Authentication & User Governance"]
+            UC1(["UC-01: Authenticate User\n(Argon2id / JWT Access & Refresh)"])
+            UC2(["UC-02: Manage Platform Users\n(Create, Assign Role, Lockout Unlock)"])
+            UC3(["UC-03: Inspect Security Audit Events\n(Login/Logout/Failures)"])
+        end
+
+        subgraph UC_Identity["Agent Identity & Credentials"]
+            UC4(["UC-04: Register Agent Profile\n(Derive DID:key Ed25519)"])
+            UC5(["UC-05: Issue Verifiable Credential\n(Ed25519Signature2020 Proof)"])
+            UC6(["UC-06: Verify Credential Integrity\n(URDNA2015 JSON-LD Hash Check)"])
+        end
+
+        subgraph UC_Trust["Trust Intelligence & Policy"]
+            UC7(["UC-07: Ingest Telemetry Observation\n(Success, Compliance, Latency)"])
+            UC8(["UC-08: Compute Temporal EMA Trust\n(P_i and T_i Updates, State Machine)"])
+            UC9(["UC-09: Enforce Adaptive Authorization\n(Gate Privileged vs Standard Ops)"])
+            UC10(["UC-10: Administratively Revoke Agent\n(Terminal Lockout)"])
+            UC11(["UC-11: Inspect Trust Audit Trails\n(State Change Timeline)"])
+        end
+
+        subgraph UC_Execution["Coordination & Workflows"]
+            UC12(["UC-12: Discover & Rank Agents\n(Trust-Weighted Match Scoring)"])
+            UC13(["UC-13: Manage Collaboration Session\n(Interactive Dialogue & Task)"])
+            UC14(["UC-14: Orchestrate Sequential Workflow\n(Chained Output Pipelining)"])
+            UC15(["UC-15: Monitor System Health\n(FastAPI / SQLite / Trust Engine Probes)"])
+        end
+
+        subgraph UC_Future["Future Scope (Proposed)"]
+            UC16(["UC-16 [PROPOSED]: Parallel Workflow Execution\n(Async Multi-Agent DAG Engine)"])
+            UC17(["UC-17 [PROPOSED]: Distributed Blockchain VDR\n(Decentralized Multi-Org Consensus)"])
+        end
+    end
+
+    %% Administrator Connections
+    Admin --> UC1
+    Admin --> UC2
+    Admin --> UC3
+    Admin --> UC10
+    Admin --> UC11
+    Admin --> UC15
+
+    %% Operator Connections
+    Operator --> UC1
+    Operator --> UC4
+    Operator --> UC5
+    Operator --> UC7
+    Operator --> UC12
+    Operator --> UC13
+    Operator --> UC14
+    Operator --> UC15
+
+    %% Viewer Connections
+    Viewer --> UC1
+    Viewer --> UC11
+    Viewer --> UC15
+
+    %% Autonomous Agent Connections
+    Agent --> UC6
+    Agent --> UC7
+    Agent --> UC9
+    Agent --> UC12
+    Agent --> UC13
+    Agent --> UC14
+
+    %% Include / Extend Relationships
+    UC7 -.->|"<<includes>>"| UC8
+    UC8 -.->|"<<triggers>>"| UC11
+    UC14 -.->|"<<enforces>>"| UC9
+    UC13 -.->|"<<enforces>>"| UC9
+    UC14 -.->|"<<submits>>"| UC7

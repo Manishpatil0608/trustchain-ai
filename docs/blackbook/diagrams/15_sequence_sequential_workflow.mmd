@@ -1,0 +1,66 @@
+sequenceDiagram
+    %% TrustChain-AI: Sequence Diagram — Sequential Multi-Agent Workflow Orchestration
+
+    autonumber
+    actor Operator as Platform Operator / User
+    participant API as FastAPI /registry/workflows Router
+    participant Enforcer as AdaptivePolicyEnforcer
+    participant Connector as LocalAgentConnector (agent_connector.py)
+    participant N1 as Node 0: Research Agent
+    participant N2 as Node 1: Analysis Agent
+    participant N3 as Node 2: Verification Agent
+    participant DB as SQLite VDR (workflows, nodes, telemetry)
+
+    %% Step 1: Workflow Registration
+    rect rgb(240, 248, 255)
+        Note over Operator, DB: Step 1: Workflow Creation & Node Topology Definition
+        Operator->>API: POST /registry/workflows (workflow_name, orchestrator_did, pattern="SEQUENTIAL", nodes=[...])
+        API->>DB: INSERT into workflows (workflow_id, name, pattern="SEQUENTIAL", status="PENDING")
+        API->>DB: INSERT into workflow_nodes for step_order 0 (Research), 1 (Analysis), 2 (Verification)
+        DB-->>API: Workflow & Nodes Created
+        API-->>Operator: HTTP 201 Created {workflow_id, nodes: 3, status: "PENDING"}
+    end
+
+    %% Step 2: Sequential Execution Pipeline
+    rect rgb(255, 250, 240)
+        Note over Operator, DB: Step 2: Sequential Step Execution with Output-to-Input Pipelining
+        Operator->>API: POST /registry/workflows/{id}/execute
+        API->>Enforcer: enforce_policy(orchestrator_did, "workflow:execute")
+        Enforcer-->>API: Authorized (TRUSTED)
+
+        %% Execution of Step 0
+        API->>Enforcer: enforce_policy(agent_0_did, "task:execute")
+        Enforcer-->>API: Authorized
+        API->>Connector: execute_task(N1, input_data="Initial Task Prompt", capability="research")
+        Connector->>N1: Invocate Local Capability Simulator
+        N1-->>Connector: Research Findings & Structured Citations
+        Connector-->>API: Step 0 Output Data (exec_time: 210ms)
+        API->>DB: UPDATE workflow_nodes SET status="COMPLETED", output_data=out_0 WHERE step_order=0
+
+        %% Execution of Step 1
+        API->>Enforcer: enforce_policy(agent_1_did, "task:execute")
+        Enforcer-->>API: Authorized
+        API->>Connector: execute_task(N2, input_data=out_0, capability="analysis")
+        Connector->>N2: Invocate Local Capability Simulator
+        N2-->>Connector: Deep Behavioral & Statistical Synthesis
+        Connector-->>API: Step 1 Output Data (exec_time: 340ms)
+        API->>DB: UPDATE workflow_nodes SET status="COMPLETED", output_data=out_1 WHERE step_order=1
+
+        %% Execution of Step 2
+        API->>Enforcer: enforce_policy(agent_2_did, "task:execute")
+        Enforcer-->>API: Authorized
+        API->>Connector: execute_task(N3, input_data=out_1, capability="verification")
+        Connector->>N3: Invocate Local Capability Simulator
+        N3-->>Connector: Cryptographic & Integrity Proof Sign-off
+        Connector-->>API: Step 2 Final Verified Output (exec_time: 180ms)
+        API->>DB: UPDATE workflow_nodes SET status="COMPLETED", output_data=out_2 WHERE step_order=2
+    end
+
+    %% Step 3: Workflow Finalization & Telemetry Collection
+    rect rgb(245, 255, 245)
+        Note over Operator, DB: Step 3: Pipeline Completion & Multi-Agent Telemetry Emission
+        API->>DB: UPDATE workflows SET status="COMPLETED", final_result=out_2, completed_at=now()
+        API->>DB: INSERT telemetry for N1, N2, and N3 (success=True, measured latency_ms)
+        API->>API: Trigger Asynchronous Trust Updates for Participant Agents
+        API-->>Operator: HTTP 200 OK: Complete Sequential Workflow Results & Node Trace
+    end

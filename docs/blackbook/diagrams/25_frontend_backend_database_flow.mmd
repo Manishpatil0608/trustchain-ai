@@ -1,0 +1,54 @@
+sequenceDiagram
+    %% TrustChain-AI: Sequence Diagram — End-to-End Tier Interaction (UI -> API -> DB)
+
+    autonumber
+    actor User as Operator / User
+    participant UI as React 19 UI Component (e.g., TelemetryCenter)
+    participant Client as Axios API Client (api.js)
+    participant Gateway as FastAPI Router (/registry/telemetry)
+    participant AuthDep as Security Dependency (get_current_active_user)
+    participant TrustSvc as TrustEngine & Service Layer
+    participant ORM as SQLAlchemy 2.0 ORM Session
+    participant SQLite as SQLite Database (vdr.db WAL Mode)
+
+    User->>UI: Input Telemetry Data & Click "Submit Observation"
+    UI->>Client: api.submitTelemetry(payload)
+    Client->>Client: Retrieve JWT Access Token from Storage
+    Client->>Gateway: HTTP POST /registry/telemetry<br/>Headers: {Authorization: "Bearer eyJhbGciOi..."}<br/>Body: {agent_did, task_id, success: true, compliance: true, latency_ms: 120}
+
+    %% Gateway & Auth Dependency
+    Gateway->>AuthDep: Validate Request Context
+    AuthDep->>AuthDep: Decode & Verify JWT Signature (HS256)
+    AuthDep->>ORM: SELECT * FROM users WHERE id = user_id
+    ORM->>SQLite: PRAGMA query + SELECT users
+    SQLite-->>ORM: User Row: role="OPERATOR", is_active=True
+    ORM-->>AuthDep: UserModel Object
+    AuthDep-->>Gateway: Authenticated User Principal (Role Authorized)
+
+    %% Service Execution
+    Gateway->>TrustSvc: process_telemetry_event(payload, db_session)
+    TrustSvc->>ORM: Add TelemetryLogModel
+    ORM->>SQLite: INSERT INTO telemetry_logs (...)
+    SQLite-->>ORM: Row Inserted
+
+    %% Trust Re-evaluation Window
+    TrustSvc->>ORM: Query last 10 telemetry records for agent_did
+    ORM->>SQLite: SELECT * FROM telemetry_logs WHERE agent_did = ? ORDER BY timestamp DESC LIMIT 10
+    SQLite-->>ORM: 10 Records Returned
+    ORM-->>TrustSvc: List of TelemetryLogModel Objects
+
+    Note over TrustSvc: In-Memory Trust Mathematics:<br/>1. S_i = 10/10 = 1.0, C_i = 10/10 = 1.0, L_i = 120/2000 = 0.06<br/>2. P_i = 0.6(1.0) + 0.3(1.0) + 0.1(1 - 0.06) = 0.994<br/>3. T_i = 0.7(0.994) + 0.3(0.950) = 0.9808 (TRUSTED)
+
+    TrustSvc->>ORM: UPDATE agent_trust_states SET temporal_trust_score = 0.9808
+    ORM->>SQLite: COMMIT Transaction (Write to WAL buffer)
+    SQLite-->>ORM: Transaction Committed
+    TrustSvc-->>Gateway: TrustEvaluationResponse(score=0.9808, state="TRUSTED")
+
+    %% Response Serialization
+    Gateway->>Gateway: Serialize via Pydantic v2 Schema
+    Gateway-->>Client: HTTP 200 OK<br/>Body: {status: "ok", trust_score: 0.9808, trust_state: "TRUSTED"}
+    
+    %% UI State Update
+    Client-->>UI: Promise Resolved with Data
+    UI->>UI: Update React State (useState / useEffect)<br/>Re-render Recharts Trend Line & Status Badges
+    UI-->>User: Display Toast: "Telemetry Recorded — Agent Trust: 0.98 (TRUSTED)"

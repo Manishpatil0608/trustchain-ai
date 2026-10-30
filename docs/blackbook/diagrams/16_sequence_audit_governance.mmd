@@ -1,0 +1,42 @@
+sequenceDiagram
+    %% TrustChain-AI: Sequence Diagram — Audit Logging & Governance Exploration
+
+    autonumber
+    actor Admin as System Administrator (ADMIN Role)
+    participant UI as React Frontend (AuditTrail / UserManagement)
+    participant API as FastAPI Backend Routers (/auth, /registry)
+    participant DB_Sec as SQLite (security_audit_events)
+    participant DB_Trust as SQLite (trust_audit_trails)
+    participant DB_Collab as SQLite (collaboration_events)
+
+    %% Scenario 1: Continuous Immutable Ingestion
+    rect rgb(240, 248, 255)
+        Note over API, DB_Collab: Stream 1: Real-time Multi-Dimensional Audit Logging
+        API->>DB_Sec: INSERT security_audit_event (user_id, event_type="LOGIN_SUCCESS", ip="127.0.0.1")
+        API->>DB_Sec: INSERT security_audit_event (user_id, event_type="SUSPICIOUS_PRIVILEGE_DENIED")
+        API->>DB_Trust: INSERT trust_audit_trail (agent_did, prev="TRUSTED", new="SUSPICIOUS", reason="T < 0.8")
+        API->>DB_Collab: INSERT collaboration_event (session_id, sender_did, type="REQUEST", content)
+    end
+
+    %% Scenario 2: Admin Security Audit Investigation
+    rect rgb(255, 250, 240)
+        Note over Admin, DB_Sec: Stream 2: Administrator Security Audit Investigation
+        Admin->>UI: Navigate to /admin/audit-trail
+        UI->>API: GET /auth/audit-log?limit=50&event_type=ALL (JWT with role=ADMIN)
+        API->>API: Validate Admin Role via require_admin dependency
+        API->>DB_Sec: SELECT * FROM security_audit_events ORDER BY timestamp DESC LIMIT 50
+        DB_Sec-->>API: 50 Security Records (logins, lockouts, authorization blocks)
+        API-->>UI: HTTP 200 OK: Security Audit Dataset
+        UI-->>Admin: Render Filterable Table & Severity Breakdown Charts
+    end
+
+    %% Scenario 3: Agent Trust Transition Governance
+    rect rgb(245, 255, 245)
+        Note over Admin, DB_Trust: Stream 3: Trust State Transition & Quarantine Review
+        Admin->>UI: Inspect Agent Trust History (Agent Details View)
+        UI->>API: GET /registry/audit/trust-trails?agent_did=did:key:z6M...
+        API->>DB_Trust: SELECT * FROM trust_audit_trails WHERE agent_did = agent_did ORDER BY timestamp ASC
+        DB_Trust-->>API: Historical State Transitions [Genesis -> Trusted -> Suspicious -> Quarantined]
+        API-->>UI: HTTP 200 OK: Trust Transition Chronology with Degradation Reasons
+        UI-->>Admin: Render State Transition Timeline & Score Trajectory
+    end

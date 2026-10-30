@@ -1,0 +1,42 @@
+flowchart LR
+    %% TrustChain-AI: Defense-in-Depth Security Architecture
+
+    subgraph Layer1["1. Authentication & Session Defense"]
+        A1["Argon2id Password Hashing\n(Memory-hard KDF, Salted)"]
+        A2["JWT Access Tokens\n(30-minute TTL, HS256 Signed)"]
+        A3["JWT Refresh Tokens\n(7-day TTL, DB Hash Stored)"]
+        A4["Token Rotation & Replay Trap\n(Revocation on Re-use Detected)"]
+        A5["5-Strike Account Lockout\n(15-minute Exponential Cooldown)"]
+    end
+
+    subgraph Layer2["2. Role-Based Access Control (RBAC)"]
+        B1["ADMIN Role\n- User Management\n- Hard Revocation\n- Audit Trail Access"]
+        B2["OPERATOR Role\n- Agent Onboarding\n- Workflow Triggering\n- Collaboration Control"]
+        B3["VIEWER Role\n- Read-Only Dashboards\n- Health Inquiries\n- Public Telemetry View"]
+    end
+
+    subgraph Layer3["3. Cryptographic Identity & Credentials"]
+        C1["W3C DID:key Scheme\n(Self-certifying Ed25519)"]
+        C2["PyNaCl Libsodium Cryptography\n(Ed25519 High-Speed Signatures)"]
+        C3["W3C Verifiable Credentials v1.1\n(Ed25519Signature2020 Proofs)"]
+        C4["PyLD JSON-LD Normalization\n(URDNA2015 Deterministic Hashing)"]
+    end
+
+    subgraph Layer4["4. Trust-Aware Adaptive Policy Enforcement"]
+        D1["TRUSTED (T >= 0.8)\n- Unrestricted Execution\n- Privileged Operations Allowed"]
+        D2["SUSPICIOUS (0.5 <= T < 0.8)\n- Privileged Ops DENIED (HTTP 403)\n- Standard Ops Monitored"]
+        D3["QUARANTINED (T < 0.5)\n- All Operations BLOCKED (HTTP 403)\n- Discovery Isolation"]
+        D4["REVOKED (Terminal)\n- Permanent Denial\n- Requires Re-registration"]
+    end
+
+    subgraph Layer5["5. Multi-Tier Immutable Audit Trails"]
+        E1["security_audit_events\n(Auth Failures, Lockouts, Policy Blocks)"]
+        E2["trust_audit_trails\n(Mathematical State Transitions & Reasons)"]
+        E3["collaboration_events\n(Message Logs & Inter-Agent Dialogue)"]
+    end
+
+    %% Defense Flow
+    Layer1 -->|"Establishes User Identity"| Layer2
+    Layer3 -->|"Establishes Agent Identity"| Layer4
+    Layer2 -->|"Gates User APIs"| Layer5
+    Layer4 -->|"Gates Agent Interactions"| Layer5

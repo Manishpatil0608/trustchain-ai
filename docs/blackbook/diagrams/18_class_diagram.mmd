@@ -1,0 +1,154 @@
+classDiagram
+    %% TrustChain-AI: Class Diagram of Backend Subsystems & Models
+
+    class TrustState {
+        <<enumeration>>
+        TRUSTED
+        SUSPICIOUS
+        QUARANTINED
+        REVOKED
+    }
+
+    class TrustConfig {
+        +float w1_success = 0.6
+        +float w2_compliance = 0.3
+        +float w3_latency = 0.1
+        +float decay_lambda = 0.7
+        +int window_size = 10
+        +float threshold_trusted = 0.8
+        +float threshold_suspicious = 0.5
+    }
+
+    class TrustEngine {
+        -TrustConfig config
+        +compute_performance_score(telemetry_records) float
+        +compute_temporal_trust(p_current, t_prev) float
+        +classify_trust_state(trust_score) TrustState
+        +evaluate_agent_trust(agent_did, db_session) TrustEvaluationResult
+    }
+
+    class AdaptivePolicyEnforcer {
+        +list PRIVILEGED_OPERATIONS
+        +list STANDARD_OPERATIONS
+        +enforce_policy(agent_did, operation, db_session) bool
+        +is_operation_permitted(trust_state, operation) bool
+    }
+
+    class LocalAgentConnector {
+        +dict CAPABILITY_HANDLERS
+        +execute_agent_task(agent, task_input, capability) dict
+        -_simulate_research(prompt) str
+        -_simulate_analysis(prompt) str
+        -_simulate_coding(prompt) str
+        -_simulate_verification(prompt) str
+        -_http_post_fallback(endpoint, payload) dict
+    }
+
+    class DIDKey {
+        +str did
+        +bytes public_key_bytes
+        +bytes private_key_bytes
+        +generate() DIDKey
+        +resolve(did_uri) dict
+        +sign_data(data) bytes
+        +verify_signature(data, signature) bool
+    }
+
+    class VerifiableCredential {
+        +str vc_id
+        +str issuer_did
+        +str subject_did
+        +dict credential_subject
+        +dict proof
+        +create_credential(issuer_key, subject_did, claims) dict
+        +canonicalize_ldp(credential_dict) str
+        +verify_proof(credential_json) bool
+    }
+
+    class AgentRegistryModel {
+        +str agent_id
+        +str agent_name
+        +str did
+        +str capabilities
+        +str status
+        +float reputation_score
+        +int successful_tasks
+        +int total_tasks
+    }
+
+    class AgentTrustStateModel {
+        +str did
+        +float temporal_trust_score
+        +str trust_state
+        +datetime last_updated
+    }
+
+    class TelemetryLogModel {
+        +str id
+        +str agent_did
+        +str task_id
+        +bool success
+        +str compliance_event
+        +int latency_ms
+        +datetime timestamp
+    }
+
+    class TrustAuditTrailModel {
+        +str id
+        +str agent_did
+        +str previous_state
+        +str new_state
+        +str reason
+        +datetime timestamp
+    }
+
+    class CollaborationSessionModel {
+        +str session_id
+        +str requester_did
+        +str target_did
+        +str status
+        +str task_description
+        +float productivity_score
+    }
+
+    class WorkflowModel {
+        +str workflow_id
+        +str workflow_name
+        +str pattern
+        +str status
+        +str orchestrator_did
+    }
+
+    class WorkflowNodeModel {
+        +str node_id
+        +str workflow_id
+        +str agent_did
+        +int step_order
+        +str status
+        +str input_data
+        +str output_data
+    }
+
+    class UserModel {
+        +str id
+        +str username
+        +str password_hash
+        +str role
+        +bool is_active
+        +int failed_login_attempts
+    }
+
+    %% Relationships
+    TrustEngine ..> TrustConfig : uses
+    TrustEngine ..> TrustState : outputs
+    AdaptivePolicyEnforcer ..> TrustState : evaluates
+    AdaptivePolicyEnforcer ..> AgentTrustStateModel : queries
+    TrustEngine ..> AgentTrustStateModel : updates
+    TrustEngine ..> TelemetryLogModel : analyzes
+    TrustEngine ..> TrustAuditTrailModel : appends
+    AgentRegistryModel "1" -- "1" AgentTrustStateModel : tracks
+    AgentRegistryModel "1" -- "*" TelemetryLogModel : logs
+    WorkflowModel "1" -- "*" WorkflowNodeModel : aggregates
+    CollaborationSessionModel "1" -- "*" AgentRegistryModel : engages
+    LocalAgentConnector ..> AgentRegistryModel : dispatches_to
+    VerifiableCredential ..> DIDKey : relies_on

@@ -1,0 +1,47 @@
+flowchart TD
+    %% TrustChain-AI: Behavioral View Across Runtime Lifecycle
+
+    subgraph Phase1["Phase 1: Agent Onboarding & Identity Genesis"]
+        T0["t0: Registration Event"] --> Reg["Submit Name, Capabilities, Endpoint"]
+        Reg --> DIDGen["Derive DID:key from Ed25519 Public Key"]
+        DIDGen --> InitTrust["Initialize Trust Record: T_0 = 1.0, State = TRUSTED"]
+        InitTrust --> VCIssue["Issue & Sign Verifiable Credential (Ed25519Signature2020)"]
+    end
+
+    subgraph Phase2["Phase 2: Operational Execution & Telemetry Generation"]
+        VCIssue --> OpReq["t1..tk: Incoming Task / Collaboration Request"]
+        OpReq --> AuthCheck["Adaptive Policy Evaluation against Current Trust State"]
+        AuthCheck --> Exec["Execute Capability Task (LocalAgentConnector / HTTP)"]
+        Exec --> EmitTelem["Emit Behavioral Telemetry (success, compliance, latency_ms)"]
+        EmitTelem --> LogTelem["Append Observation to telemetry_logs"]
+    end
+
+    subgraph Phase3["Phase 3: Dynamic Trust Update (Sliding Window n=10)"]
+        LogTelem --> CalcMetrics["Calculate S_i(t), C_i(t), L_i(t) over last 10 records"]
+        CalcMetrics --> CalcP["P_i(t) = 0.6*S_i + 0.3*C_i + 0.1*(1 - L_i)"]
+        CalcP --> CalcT["T_i(t) = 0.7*P_i(t) + 0.3*T_i(t-1)"]
+        CalcT --> EvalThreshold{"Evaluate T_i(t) Threshold"}
+    end
+
+    subgraph Phase4["Phase 4: Behavioral State Transitions & Enforcement"]
+        EvalThreshold -->|T >= 0.8| StateTrusted["State: TRUSTED\nFull access to PRIVILEGED & STANDARD ops"]
+        EvalThreshold -->|0.5 <= T < 0.8| StateSuspicious["State: SUSPICIOUS\nPRIVILEGED ops blocked (HTTP 403)\nSTANDARD ops allowed with audit logging"]
+        EvalThreshold -->|T < 0.5| StateQuarantine["State: QUARANTINED\nALL operations blocked (HTTP 403)\nIsolated from discovery & workflows"]
+        
+        AdminAction["Admin Revocation Action\n(POST /registry/agents/{id}/revoke)"] --> StateRevoked["State: REVOKED\nTERMINAL state: Permanent denial\nNo telemetry recovery permitted"]
+    end
+
+    subgraph Phase5["Phase 5: Trust Trajectory & Recovery"]
+        StateQuarantine -->|"Successful auxiliary tasks\nT recovers >= 0.5"| StateSuspicious
+        StateSuspicious -->|"Continued high compliance\nT recovers >= 0.8"| StateTrusted
+        StateSuspicious -->|"Further degradations\nT drops < 0.5"| StateQuarantine
+    end
+
+    subgraph Phase6["Phase 6: Comprehensive Governance & Audit"]
+        StateTrusted --> AuditLog["Append Immutable Transition to trust_audit_trails"]
+        StateSuspicious --> AuditLog
+        StateQuarantine --> AuditLog
+        StateRevoked --> AuditLog
+        AuditLog --> NextLoop["Ready for Next Request Cycle (t + 1)"]
+        NextLoop --> OpReq
+    end

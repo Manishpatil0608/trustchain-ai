@@ -1,0 +1,51 @@
+flowchart TB
+    %% TrustChain-AI: Data Flow Diagram — Level 2 (Trust Evaluation Pipeline)
+
+    %% External Entity
+    Agent["Autonomous Agent / Telemetry Source"]
+
+    %% Data Stores
+    D_Telem[("telemetry_logs\n(Sliding Window: n=10)")]
+    D_State[("agent_trust_states\n(T_i Score, State)")]
+    D_Audit[("trust_audit_trails\n(Immutable Transition History)")]
+
+    %% Detailed Processes
+    P5_1(("5.1\nIngest Raw\nObservation"))
+    P5_2(("5.2\nPayload Validation\n& Schema Check"))
+    P5_3(("5.3\nSliding Window\nExtraction (n=10)"))
+    P5_4(("5.4\nMetric Normalization\n(S, C, L)"))
+    P5_5(("5.5\nCompute Performance\nScore P_i(t)"))
+    P5_6(("5.6\nLoad Prior Trust\nT_i(t-1)"))
+    P5_7(("5.7\nCompute Temporal\nEMA T_i(t)"))
+    P5_8(("5.8\nClassify State\n& Threshold Check"))
+    P5_9(("5.9\nState & Audit\nPersistence"))
+    P5_10(("5.10\nDispatch Updated\nTrust Context"))
+
+    %% Subsystem Consumers
+    AuthzConsumer["AdaptivePolicyEnforcer\n(Route Gating)"]
+    UIVisualizer["TrustAnalytics &\nDashboardHome UI"]
+
+    %% Flow Steps
+    Agent -->|"Telemetry Payload (task_id, success, compliance, latency_ms)"| P5_1
+    P5_1 -->|"Raw Ingestion Dict"| P5_2
+    P5_2 -->|"Store Validated Event"| D_Telem
+    P5_2 -->|"Trigger Window Query for agent_did"| P5_3
+
+    D_Telem -->|"Retrieve Last 10 Telemetry Records"| P5_3
+    P5_3 -->|"Observation Window (n <= 10)"| P5_4
+
+    P5_4 -->|"S_i(t) = success_count / n\nC_i(t) = compliance_count / n\nL_i(t) = min(avg_latency / 2000, 1.0)"| P5_5
+
+    P5_5 -->|"P_i(t) = 0.6*S_i + 0.3*C_i + 0.1*(1 - L_i)"| P5_7
+    D_State -->|"Fetch Previous T_i(t-1) [Default 1.0]"| P5_6
+    P5_6 -->|"Prior Trust T_i(t-1)"| P5_7
+
+    P5_7 -->|"T_i(t) = 0.7*P_i(t) + 0.3*T_i(t-1)"| P5_8
+    P5_8 -->|"Evaluate Thresholds:\n>= 0.8 -> TRUSTED\n0.5 to 0.8 -> SUSPICIOUS\n< 0.5 -> QUARANTINED\n[REVOKED Retained]"| P5_9
+
+    P5_9 -->|"Update Score & State"| D_State
+    P5_9 -->|"Insert State Transition Record"| D_Audit
+    P5_9 -->|"Publish Updated Metrics"| P5_10
+
+    P5_10 -->|"Enforce Operation Restrictions"| AuthzConsumer
+    P5_10 -->|"Render Real-time Graph"| UIVisualizer

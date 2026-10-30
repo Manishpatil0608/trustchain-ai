@@ -1,0 +1,44 @@
+sequenceDiagram
+    %% TrustChain-AI: Sequence Diagram — Telemetry Ingestion & Dynamic Trust Evaluation
+
+    autonumber
+    actor Agent as Autonomous Agent / Worker
+    participant API as FastAPI /registry Router
+    participant TelemSvc as Telemetry Service (telemetry.py)
+    participant DB_Logs as SQLite (telemetry_logs)
+    participant Engine as TrustEngine (trust_engine.py)
+    participant DB_State as SQLite (agent_trust_states)
+    participant DB_Audit as SQLite (trust_audit_trails)
+
+    Agent->>API: POST /registry/telemetry (agent_did, task_id, success, compliance_event, latency_ms)
+    API->>TelemSvc: record_telemetry(payload)
+    
+    TelemSvc->>DB_Logs: INSERT into telemetry_logs (id, agent_did, task_id, success, compliance, latency, timestamp)
+    DB_Logs-->>TelemSvc: Event Persisted
+
+    TelemSvc->>Engine: update_trust_for_agent(agent_did)
+    Engine->>DB_Logs: SELECT last 10 telemetry records WHERE agent_did = agent_did ORDER BY timestamp DESC
+    DB_Logs-->>Engine: 10 Historical Records [r_1, r_2, ..., r_n]
+
+    Note over Engine: Calculate Sliding Window Factors (n <= 10)<br/>S_i(t) = sum(success) / n<br/>C_i(t) = sum(compliance == True) / n<br/>L_i(t) = min(avg(latency_ms) / 2000, 1.0)
+    
+    Engine->>Engine: Compute Composite Performance Score:<br/>P_i(t) = 0.6 * S_i(t) + 0.3 * C_i(t) + 0.1 * (1 - L_i(t))
+    
+    Engine->>DB_State: SELECT temporal_trust_score, trust_state FROM agent_trust_states WHERE did = agent_did
+    DB_State-->>Engine: Prior State: T_i(t-1) [Default 1.0 if new]
+
+    Engine->>Engine: Compute Exponential Moving Average (decay lambda = 0.7):<br/>T_i(t) = 0.7 * P_i(t) + 0.3 * T_i(t-1)
+
+    Note over Engine: Classify New Trust State:<br/>- T >= 0.8  --> TRUSTED<br/>- 0.5 <= T < 0.8 --> SUSPICIOUS<br/>- T < 0.5  --> QUARANTINED<br/>*(If already REVOKED, retain REVOKED)*
+
+    alt State Changed (e.g., TRUSTED -> SUSPICIOUS or SUSPICIOUS -> QUARANTINED)
+        Engine->>DB_Audit: INSERT into trust_audit_trails (id, agent_did, previous_state, new_state, reason, timestamp)
+        DB_Audit-->>Engine: Audit Trail Recorded
+    end
+
+    Engine->>DB_State: UPDATE agent_trust_states SET temporal_trust_score = T_i(t), trust_state = new_state, last_updated = now()
+    DB_State-->>Engine: State Record Updated
+
+    Engine-->>TelemSvc: TrustEvaluationResult(agent_did, P_i, T_i, trust_state, state_changed)
+    TelemSvc-->>API: TelemetryResponse(status="recorded", metrics)
+    API-->>Agent: HTTP 200 OK {status: "ok", trust_score: T_i(t), trust_state: state}

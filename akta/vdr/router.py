@@ -133,7 +133,8 @@ async def retrieve_vc(
 # TrustChain-AI Extensions
 # ==========================================
 from akta.telemetry import TelemetryEvent, TestHarnessTelemetrySource
-from akta.vdr import trust_crud
+from akta.vdr import trust_crud, models as vdr_models
+from akta.auth.dependencies import get_optional_current_user
 from datetime import datetime, timezone
 import uuid
 
@@ -145,7 +146,6 @@ async def publish_telemetry(
     """
     Ingests an untrusted telemetry event from an execution context and recalculates the trust state.
     """
-    import uuid
     try:
         event = TelemetryEvent(
             agent_did=request.agent_did,
@@ -165,6 +165,7 @@ async def publish_telemetry(
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+
 @router.get("/trust/state/{did}", response_model=vdr_schemas.TrustStateResponse)
 async def get_trust_state(
     did: str,
@@ -177,15 +178,20 @@ async def get_trust_state(
         trust_state=state.trust_state
     )
 
+
 @router.post("/trust/revoke/{did}", response_model=vdr_schemas.TrustStateResponse)
 async def revoke_trust(
     did: str,
     request: vdr_schemas.RevocationRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: Optional[vdr_models.UserModel] = Depends(get_optional_current_user)
 ):
     """
     Administrative endpoint to explicitly revoke a credential/agent context due to security compromise.
     """
+    if current_user and current_user.role.upper() not in ["ADMIN"]:
+        raise HTTPException(status_code=403, detail="Access denied: Administrative privileges required for agent revocation.")
+
     state = trust_crud.revoke_agent(db, did, reason=request.reason)
     return vdr_schemas.TrustStateResponse(
         agent_did=state.did,
@@ -193,23 +199,24 @@ async def revoke_trust(
         trust_state=state.trust_state
     )
 
+
 @router.get("/trust/audit/{did}")
 async def get_audit(did: str, db: Session = Depends(get_db)):
     audits = trust_crud.get_trust_audit(db, did)
     return [{"id": a.id, "previous_state": a.previous_state, "new_state": a.new_state, "reason": a.reason, "timestamp": a.timestamp} for a in audits]
 
+
 @router.get("/trust/agents")
 async def get_agents(db: Session = Depends(get_db)):
-    from akta.vdr import models
-    states = db.query(models.AgentTrustStateModel).all()
+    states = db.query(vdr_models.AgentTrustStateModel).all()
     return [{"agent_did": s.did, "trust_score": s.temporal_trust_score, "trust_state": s.trust_state} for s in states]
+
 
 from fastapi.responses import HTMLResponse
 
 @router.get("/trust/dashboard", response_class=HTMLResponse)
 async def get_dashboard(db: Session = Depends(get_db)):
-    from akta.vdr import models
-    states = db.query(models.AgentTrustStateModel).all()
+    states = db.query(vdr_models.AgentTrustStateModel).all()
     
     html_content = """
     <html>
@@ -241,7 +248,7 @@ async def get_dashboard(db: Session = Depends(get_db)):
     """
     
     for s in states:
-        event_count = db.query(models.TelemetryLogModel).filter(models.TelemetryLogModel.agent_did == s.did).count()
+        event_count = db.query(vdr_models.TelemetryLogModel).filter(vdr_models.TelemetryLogModel.agent_did == s.did).count()
         html_content += f"""
                 <tr>
                     <td>{s.did}</td>
@@ -257,4 +264,29 @@ async def get_dashboard(db: Session = Depends(get_db)):
         </body>
     </html>
     """
-    return HTMLResponse(content=html_content)
+    return HTMLResponse(content=html_content)
+
+
+@router.get("/trust/telemetry")
+async def get_all_telemetry(db: Session = Depends(get_db)):
+    logs = db.query(vdr_models.TelemetryLogModel).order_by(vdr_models.TelemetryLogModel.timestamp.desc()).limit(100).all()
+    return [{"id": l.id, "agent_did": l.agent_did, "task_id": l.task_id, "success": l.success, "compliance_event": l.compliance_event, "latency_ms": l.latency_ms, "timestamp": l.timestamp} for l in logs]
+
+
+@router.get("/trust/telemetry/{did}")
+async def get_agent_telemetry(did: str, db: Session = Depends(get_db)):
+    logs = db.query(vdr_models.TelemetryLogModel).filter(vdr_models.TelemetryLogModel.agent_did == did).order_by(vdr_models.TelemetryLogModel.timestamp.desc()).limit(50).all()
+    return [{"id": l.id, "agent_did": l.agent_did, "task_id": l.task_id, "success": l.success, "compliance_event": l.compliance_event, "latency_ms": l.latency_ms, "timestamp": l.timestamp} for l in logs]
+
+
+@router.get("/vdr/credentials/subject/{did}")
+async def get_vc_by_subject(did: str, db: Session = Depends(get_db)):
+    import json
+    vcs = db.query(vdr_models.StoredVCModel).filter(vdr_models.StoredVCModel.subject_did == did).all()
+    return [{"vc_id": vc.vc_id, "vc": json.loads(vc.ldp_vc_json)} for vc in vcs]
+
+
+@router.get("/trust/audit")
+async def get_all_audit(db: Session = Depends(get_db)):
+    audits = db.query(vdr_models.TrustAuditTrailModel).order_by(vdr_models.TrustAuditTrailModel.timestamp.desc()).limit(100).all()
+    return [{"id": a.id, "agent_did": a.agent_did, "previous_state": a.previous_state, "new_state": a.new_state, "reason": a.reason, "timestamp": a.timestamp} for a in audits]

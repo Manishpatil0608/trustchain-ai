@@ -1,0 +1,33 @@
+sequenceDiagram
+    %% TrustChain-AI: Sequence Diagram — Capability Discovery & Trust-Aware Match Scoring
+
+    autonumber
+    actor Requester as Requester Agent / Operator
+    participant API as FastAPI /registry Router
+    participant Matcher as Discovery & Matching Engine (registry_crud.py)
+    participant DB_Agents as SQLite (agents)
+    participant DB_Trust as SQLite (agent_trust_states)
+
+    Requester->>API: GET /registry/agents/discovery?required_capability=analysis&min_trust=0.5
+    API->>Matcher: discover_agents(required_capability="analysis", min_trust=0.5)
+
+    Matcher->>DB_Agents: SELECT * FROM agents WHERE status = 'AVAILABLE' AND capabilities LIKE '%analysis%'
+    DB_Agents-->>Matcher: List of Active Candidate Agents [A_1, A_2, ..., A_k]
+
+    loop For each Candidate Agent A_i
+        Matcher->>DB_Trust: SELECT temporal_trust_score, trust_state FROM agent_trust_states WHERE did = A_i.did
+        DB_Trust-->>Matcher: {trust_score: T_i, trust_state: state_i}
+
+        alt State is QUARANTINED or REVOKED
+            Matcher->>Matcher: Exclude A_i from eligible match pool (Security & Trust Boundary)
+        else State is TRUSTED or SUSPICIOUS
+            Matcher->>Matcher: Compute Normalizations:<br/>- Normalized Reputation: r_norm = reputation_score / 5.0<br/>- Historical Success Rate: σ_i = successful_tasks / max(total_tasks, 1)<br/>- Normalized Latency Penalty: λ_i = min(last_response_time_ms / 2000.0, 1.0)
+            
+            Matcher->>Matcher: Calculate Weighted Match Score:<br/>match_score = (0.4 * T_i) + (0.3 * r_norm) + (0.2 * σ_i) + (0.1 * (1.0 - λ_i))
+            Matcher->>Matcher: Append {agent: A_i, match_score, breakdown} to ranked_pool
+        end
+    end
+
+    Matcher->>Matcher: Sort ranked_pool by match_score DESCENDING
+    Matcher-->>API: List of Ranked Agent Candidates [Top Match -> Lowest Match]
+    API-->>Requester: HTTP 200 OK: Ranked Discovery Results with Composite Match Scores

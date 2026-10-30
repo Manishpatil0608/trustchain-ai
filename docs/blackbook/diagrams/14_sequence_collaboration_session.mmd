@@ -1,0 +1,62 @@
+sequenceDiagram
+    %% TrustChain-AI: Sequence Diagram — Multi-Agent Collaboration Session Lifecycle
+
+    autonumber
+    actor Requester as Requester Agent
+    participant API as FastAPI /registry Router
+    participant Enforcer as AdaptivePolicyEnforcer
+    participant Connector as LocalAgentConnector (agent_connector.py)
+    participant DB as SQLite VDR (sessions, events, telemetry)
+    actor Target as Target Agent (Worker)
+
+    %% Step 1: Session Initiation
+    rect rgb(240, 248, 255)
+        Note over Requester, Target: Step 1: Session Initiation & Mutual Trust Verification
+        Requester->>API: POST /registry/collaborate (requester_did, target_did, task, required_capability)
+        API->>Enforcer: enforce_policy(requester_did, "collaboration:participate")
+        Enforcer-->>API: Requester Verified (TRUSTED)
+        API->>Enforcer: enforce_policy(target_did, "collaboration:participate")
+        
+        alt Target Agent is QUARANTINED or REVOKED
+            Enforcer-->>API: raise AuthorizationError("Target agent is not eligible for collaboration")
+            API-->>Requester: HTTP 403 Forbidden: Target agent quarantined
+        else Target Agent Eligible (TRUSTED or SUSPICIOUS)
+            Enforcer-->>API: Target Verified
+            API->>DB: INSERT into collaboration_sessions (session_id, requester, target, status="ACTIVE")
+            DB-->>API: Session Created
+            API-->>Requester: HTTP 201 Created {session_id, status: "ACTIVE"}
+        end
+    end
+
+    %% Step 2: Message Exchange & Structured Execution
+    rect rgb(255, 250, 240)
+        Note over Requester, Target: Step 2: Dialogue Exchange & Task Invocation
+        Requester->>API: POST /registry/collaborations/{id}/message (sender_did, message_type="REQUEST", content)
+        API->>DB: INSERT into collaboration_events (event_id, session_id, sender, type="REQUEST", content)
+        
+        API->>Connector: execute_agent_task(target_agent, task_input=content, capability=required_capability)
+        
+        alt Target Agent has live HTTP endpoint
+            Connector->>Target: Outbound HTTP POST to agent.endpoint
+            Target-->>Connector: HTTP Response Payload
+        else Local Simulation Fallback (Structured Local Engine)
+            Connector->>Connector: Generate Deterministic Capability Artifact<br/>(e.g., Structured Research / Code / Plan Analysis)
+        end
+
+        Connector-->>API: Execution Response Content (latency_ms, success)
+        API->>DB: INSERT into collaboration_events (event_id, session_id, sender=target, type="RESPONSE", content)
+        API-->>Requester: HTTP 200 OK: Response Payload from Target Agent
+    end
+
+    %% Step 3: Session Completion & Telemetry Ingestion
+    rect rgb(245, 255, 245)
+        Note over Requester, Target: Step 3: Session Closure & Mutual Telemetry Logging
+        Requester->>API: POST /registry/collaborations/{id}/complete (task_result, productivity_score=4.8)
+        API->>DB: UPDATE collaboration_sessions SET status="COMPLETED", task_result=task_result, completed_at=now()
+        
+        API->>DB: INSERT telemetry for Target (success=True, compliance=True, latency=measured_ms)
+        API->>DB: INSERT telemetry for Requester (success=True, compliance=True, latency=0)
+        
+        API->>API: Trigger Background Trust Re-evaluation for Both Agents
+        API-->>Requester: HTTP 200 OK: Collaboration Completed & Telemetry Ingested
+    end

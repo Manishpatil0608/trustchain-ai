@@ -1,0 +1,173 @@
+erDiagram
+    %% TrustChain-AI: Complete Entity-Relationship Diagram (SQLite VDR — vdr.db)
+
+    users {
+        string id PK
+        string username UK
+        string email UK
+        string password_hash
+        string role "ADMIN, OPERATOR, VIEWER"
+        boolean is_active
+        boolean is_verified
+        integer failed_login_attempts
+        datetime locked_until
+        datetime created_at
+        datetime updated_at
+        datetime last_login_at
+    }
+
+    refresh_tokens {
+        string id PK
+        string jti UK
+        string user_id FK
+        string token_hash
+        datetime created_at
+        datetime expires_at
+        datetime revoked_at
+        string replaced_by
+        string user_agent
+        string client_ip
+    }
+
+    security_audit_events {
+        string id PK
+        string user_id FK
+        string username
+        string event_type
+        text details
+        string ip_address
+        string user_agent
+        datetime timestamp
+    }
+
+    agents {
+        string agent_id PK
+        string agent_name
+        string did UK
+        text description
+        string agent_type
+        string model_name
+        string model_provider
+        string endpoint
+        string capabilities "Comma-separated string"
+        string status "AVAILABLE, BUSY, OFFLINE"
+        string health_status "HEALTHY, UNHEALTHY, OFFLINE"
+        datetime last_health_check
+        integer last_response_time_ms
+        text last_error
+        float reputation_score "1.0 - 5.0 scale"
+        integer total_tasks
+        integer successful_tasks
+        integer failed_tasks
+        datetime created_at
+        datetime updated_at
+        datetime last_active_at
+    }
+
+    agent_trust_states {
+        string did PK
+        float temporal_trust_score "0.0 - 1.0 EMA"
+        string trust_state "TRUSTED, SUSPICIOUS, QUARANTINED, REVOKED"
+        datetime last_updated
+    }
+
+    telemetry_logs {
+        string id PK
+        string agent_did FK
+        string task_id
+        boolean success
+        string compliance_event
+        integer latency_ms
+        datetime timestamp
+    }
+
+    trust_audit_trails {
+        string id PK
+        string agent_did FK
+        string previous_state
+        string new_state
+        string reason
+        datetime timestamp
+    }
+
+    stored_vcs {
+        string vc_id PK
+        text ldp_vc_json "W3C VC JSON-LD payload"
+        string issuer_did
+        string subject_did
+        datetime issuance_date
+        datetime expiration_date
+        datetime created_at
+        datetime updated_at
+    }
+
+    collaboration_sessions {
+        string session_id PK
+        string requester_did FK
+        string target_did FK
+        text task_description
+        string required_capability
+        string status "PENDING, ACTIVE, COMPLETED, REJECTED"
+        text task_result
+        float productivity_score
+        datetime created_at
+        datetime completed_at
+    }
+
+    collaboration_events {
+        string id PK
+        string session_id FK
+        string sender_did
+        string receiver_did
+        string message_type "REQUEST, RESPONSE, SYSTEM"
+        text content
+        datetime timestamp
+    }
+
+    agent_ratings {
+        string id PK
+        string session_id FK
+        string rater_did
+        string target_did
+        float rating "1.0 - 5.0"
+        text feedback
+        datetime timestamp
+    }
+
+    workflows {
+        string workflow_id PK
+        string workflow_name
+        text task_description
+        string orchestrator_did FK
+        string pattern "SEQUENTIAL, PARALLEL"
+        string status "PENDING, RUNNING, COMPLETED, FAILED"
+        text final_result
+        datetime created_at
+        datetime completed_at
+    }
+
+    workflow_nodes {
+        string node_id PK
+        string workflow_id FK
+        string agent_did FK
+        string required_capability
+        integer step_order
+        string status "PENDING, RUNNING, COMPLETED, FAILED"
+        text input_data
+        text output_data
+        integer execution_time_ms
+        datetime executed_at
+    }
+
+    %% Entity Relationships
+    users ||--o{ refresh_tokens : "owns"
+    users ||--o{ security_audit_events : "triggers"
+    agents ||--|| agent_trust_states : "maintains"
+    agents ||--o{ telemetry_logs : "emits"
+    agents ||--o{ trust_audit_trails : "audited_in"
+    agents ||--o{ workflow_nodes : "assigned_to"
+    agents ||--o{ collaboration_sessions : "participates_as_requester"
+    agents ||--o{ collaboration_sessions : "participates_as_target"
+    workflows ||--|{ workflow_nodes : "contains_steps"
+    collaboration_sessions ||--|{ collaboration_events : "contains_messages"
+    collaboration_sessions ||--o{ agent_ratings : "receives_feedback"

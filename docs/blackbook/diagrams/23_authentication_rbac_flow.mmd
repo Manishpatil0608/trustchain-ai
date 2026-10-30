@@ -1,0 +1,35 @@
+flowchart TD
+    %% TrustChain-AI: Authentication & RBAC Route Gating Flow
+
+    Req(["Incoming HTTP Request to FastAPI Endpoint"]) --> PathCheck{"Is Route Public?\n/health or /auth/login"}
+    PathCheck -->|Yes| ExecPublic["Execute Endpoint Directly"] --> Success(["Return HTTP 200 / 201"])
+
+    PathCheck -->|No| TokenPresent{"Authorization: Bearer <JWT>\nHeader Present?"}
+    TokenPresent -->|Missing / Malformed| Err401Missing["Return HTTP 401 Unauthorized\nMissing authentication token"] --> Fail(["Request Terminated"])
+
+    TokenPresent -->|Present| DecodeJWT{"Verify JWT Signature & Expiration\nPyJWT with HS256"}
+    DecodeJWT -->|Expired or Invalid Signature| Err401Invalid["Return HTTP 401 Unauthorized\nInvalid or expired token"] --> Fail
+
+    DecodeJWT -->|Signature Valid| QueryUser["Load User Profile from SQLite 'users' Table"]
+    QueryUser --> UserExists{"User Exists in DB?"}
+    UserExists -->|No| Err401UserNotFound["Return HTTP 401 Unauthorized\nUser not found"] --> Fail
+
+    UserExists -->|Yes| StatusCheck{"Check User Status:\n- is_active == True?\n- locked_until <= now()?"}
+    StatusCheck -->|Inactive or Locked| Err403Locked["Return HTTP 403 Forbidden\nAccount is disabled or temporarily locked"] --> Fail
+
+    StatusCheck -->|Active & Unlocked| RouteRoleCheck{"Evaluate Route RBAC Dependency"}
+
+    %% Admin Only Routes
+    RouteRoleCheck -->|Admin Required Routes\ne.g. /auth/users, /agents/:id/revoke| CheckAdmin{"user.role == 'ADMIN'?"}
+    CheckAdmin -->|Yes| ExecAdmin["Execute Admin Action"] --> Success
+    CheckAdmin -->|No| Err403Admin["Return HTTP 403 Forbidden\nAdministrative privileges required"] --> Fail
+
+    %% Operator Routes
+    RouteRoleCheck -->|Operator Required Routes\ne.g. /registry/workflows, /registry/collaborate| CheckOperator{"user.role in ['ADMIN', 'OPERATOR']?"}
+    CheckOperator -->|Yes| ExecOperator["Execute Operator Action"] --> Success
+    CheckOperator -->|No| Err403Operator["Return HTTP 403 Forbidden\nOperator privileges required"] --> Fail
+
+    %% Viewer / General Authenticated Routes
+    RouteRoleCheck -->|Viewer / Authenticated Routes\ne.g. /registry/agents, /registry/telemetry| CheckViewer{"user.role in ['ADMIN', 'OPERATOR', 'VIEWER']?"}
+    CheckViewer -->|Yes| ExecViewer["Execute Read / Inquiry Action"] --> Success
+    CheckViewer -->|No| Err403Viewer["Return HTTP 403 Forbidden\nInsufficient privileges"] --> Fail

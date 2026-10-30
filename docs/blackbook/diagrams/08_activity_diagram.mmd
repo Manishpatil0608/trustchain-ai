@@ -1,0 +1,40 @@
+flowchart TD
+    %% TrustChain-AI: Activity Diagram — Agent Request & Adaptive Authorization Lifecycle
+
+    StartNode(["Start: Incoming Agent Operation Request"]) --> RecvReq["Receive Request Payload & Headers at API Gateway"]
+    
+    RecvReq --> AuthCheck{"Caller Authenticated?\nValid JWT or DID Signature?"}
+    AuthCheck -->|No| Reject401["Return HTTP 401 Unauthorized\nLog Security Audit Event"] --> EndFailure(["End: Request Rejected"])
+    
+    AuthCheck -->|Yes| ResolveAgent["Resolve Target Agent & Current Trust State from SQLite VDR"]
+    ResolveAgent --> CheckState{"Evaluate Agent Trust State"}
+
+    CheckState -->|REVOKED| RejectRevoked["Return HTTP 403 Forbidden\nAgent Permanently Revoked\nTerminal Lockout"] --> EndFailure
+    CheckState -->|QUARANTINED| RejectQuarantine["Return HTTP 403 Forbidden\nAgent Quarantined Due to Low Trust T < 0.5"] --> EndFailure
+    
+    CheckState -->|SUSPICIOUS| CheckOpType{"Classify Operation Type"}
+    CheckOpType -->|PRIVILEGED OP\ne.g., workflow:execute, agent:delegate| RejectSuspicious["Return HTTP 403 Forbidden\nPrivileged Op Denied for SUSPICIOUS Agent"] --> EndFailure
+    CheckOpType -->|STANDARD OP\ne.g., read, task:execute, collab:step| PermitSuspicious["Permit Operation\nFlag for Heightened Telemetry Monitoring"] --> ExecTask
+
+    CheckState -->|TRUSTED| PermitTrusted["Permit Operation\nFull Privilege Granted"] --> ExecTask
+
+    ExecTask["Dispatch Task to LocalAgentConnector / HTTP Endpoint"]
+    ExecTask --> TaskResult{"Execution Success?"}
+
+    TaskResult -->|Execution Error / Timeout| GenFailureTelem["Record Failed Telemetry\nsuccess=False, compliance=False, high latency"]
+    TaskResult -->|Success| GenSuccessTelem["Record Successful Telemetry\nsuccess=True, compliance=True, actual latency_ms"]
+
+    GenFailureTelem --> IngestTelem["Ingest Observation into telemetry_logs"]
+    GenSuccessTelem --> IngestTelem
+
+    IngestTelem --> UpdateTrust["TrustEngine Re-computes S_i, C_i, L_i over last 10 records\nCalculate P_i(t) and Temporal EMA T_i(t)"]
+    UpdateTrust --> StateCheck{"Did Trust State Change?"}
+
+    StateCheck -->|State Transitioned| WriteAudit["Append State Change to trust_audit_trails\nUpdate agent_trust_states in VDR"]
+    StateCheck -->|State Unchanged| WriteScore["Update temporal_trust_score in agent_trust_states"]
+
+    WriteAudit --> AssembleResp["Assemble JSON Response with Task Result & Trust Context"]
+    WriteScore --> AssembleResp
+
+    AssembleResp --> Return200["Return HTTP 200 OK / 201 Created to Caller"]
+    Return200 --> EndSuccess(["End: Operation Completed Successfully"])

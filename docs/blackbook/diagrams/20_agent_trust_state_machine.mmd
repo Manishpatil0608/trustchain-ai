@@ -1,0 +1,48 @@
+stateDiagram-v2
+    %% TrustChain-AI: Agent Trust State Transition Machine
+
+    [*] --> TRUSTED : Agent Registered (Genesis Baseline T_0 = 1.0)
+
+    state TRUSTED {
+        [*] --> HighTrustOperational
+        HighTrustOperational : Trust Score T >= 0.8
+        HighTrustOperational : Full Privilege: workflow:execute, agent:delegate
+        HighTrustOperational : Standard Privilege: read, task:execute, collaborate
+    }
+
+    state SUSPICIOUS {
+        [*] --> DegradedMonitoring
+        DegradedMonitoring : Trust Score 0.5 <= T < 0.8
+        DegradedMonitoring : PRIVILEGED Ops BLOCKED (HTTP 403 Forbidden)
+        DegradedMonitoring : STANDARD Ops PERMITTED with Heightened Audit Logging
+    }
+
+    state QUARANTINED {
+        [*] --> IsolatedSecurityLock
+        IsolatedSecurityLock : Trust Score T < 0.5
+        IsolatedSecurityLock : ALL Operations BLOCKED (HTTP 403 Forbidden)
+        IsolatedSecurityLock : Excluded from Capability Discovery & Workflows
+    }
+
+    state REVOKED {
+        [*] --> TerminalLockout
+        TerminalLockout : Administratively Terminated
+        TerminalLockout : Irreversible via Telemetry
+        TerminalLockout : Cryptographic Credentials Blacklisted
+    }
+
+    %% Behavioral Degradation Paths
+    TRUSTED --> SUSPICIOUS : Behavioral Degradation (T drops below 0.8)
+    TRUSTED --> QUARANTINED : Critical Failure Burst (T drops below 0.5)
+    SUSPICIOUS --> QUARANTINED : Continued Failures / Non-Compliance (T drops below 0.5)
+
+    %% Behavioral Recovery Paths
+    QUARANTINED --> SUSPICIOUS : Monitored Recovery Successes (T ascends >= 0.5)
+    SUSPICIOUS --> TRUSTED : Sustained Compliant Performance (T ascends >= 0.8)
+
+    %% Administrative Direct Revocation (Terminal)
+    TRUSTED --> REVOKED : Admin Revocation Directive (POST /registry/agents/{id}/revoke)
+    SUSPICIOUS --> REVOKED : Admin Revocation Directive (POST /registry/agents/{id}/revoke)
+    QUARANTINED --> REVOKED : Admin Revocation Directive (POST /registry/agents/{id}/revoke)
+
+    REVOKED --> [*] : Permanent Quarantine Exit / Archive

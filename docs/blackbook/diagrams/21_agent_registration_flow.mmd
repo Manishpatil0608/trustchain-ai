@@ -1,0 +1,29 @@
+flowchart TD
+    %% TrustChain-AI: Agent Registration & Cryptographic Identity Genesis Flow
+
+    Start(["Start: Onboard New Agent"]) --> InputData["Submit Agent Payload:\n- agent_name\n- description\n- capabilities comma-separated\n- endpoint optional HTTP URL"]
+
+    InputData --> ValidateInput{"Validate Input Payload & Pydantic Schema"}
+    ValidateInput -->|Invalid| ErrResp["Return HTTP 422 Unprocessable Entity"] --> EndFail(["End: Registration Failed"])
+
+    ValidateInput -->|Valid| KeyGen["Invoke PyNaCl: Generate Cryptographic Ed25519 Keypair\n- 32-byte Public Signing Key\n- 32-byte Private Seed / Private Key"]
+
+    KeyGen --> CodecPrefix["Prepend 2-byte Multicodec Header for Ed25519:\n0xED 0x01"]
+    CodecPrefix --> Base58Enc["Base58-Btc Encode Prefixed Bytes\nYields Multibase String with 'z' prefix"]
+    Base58Enc --> FormatDID["Construct Canonical DID URI:\ndid:key:z(base58_string)"]
+
+    FormatDID --> BuildDIDDoc["Construct W3C DID Document:\n- id: did:key:z...\n- verificationMethod: Ed25519VerificationKey2020\n- authentication & assertionMethod references"]
+
+    BuildDIDDoc --> StoreAgentDB["Insert into 'agents' Table:\n- agent_id: UUID4\n- did: did:key:z...\n- capabilities, endpoint, status='AVAILABLE'\n- reputation_score=5.0"]
+
+    StoreAgentDB --> InitTrustDB["Insert into 'agent_trust_states' Table:\n- did: did:key:z...\n- temporal_trust_score=1.00\n- trust_state='TRUSTED'\n- last_updated=now"]
+
+    InitTrustDB --> AuditLog["Insert into 'trust_audit_trails' Table:\n- previous_state='NONE'\n- new_state='TRUSTED'\n- reason='Agent Initial Registration Genesis'"]
+
+    AuditLog --> IssueVC{"Issue Initial Capability VC?"}
+    IssueVC -->|Yes| SignVC["Create W3C VC -> PyLD URDNA2015 -> PyNaCl Sign -> Insert into 'stored_vcs'"] --> AssembleResp
+    IssueVC -->|No| AssembleResp
+
+    AssembleResp["Assemble Response Payload:\n- agent_id\n- did\n- did_document\n- public_key_multibase\n- trust_state: TRUSTED\n- temporal_trust_score: 1.0"]
+
+    AssembleResp --> Return201["Return HTTP 201 Created to Caller"] --> EndSuccess(["End: Agent Successfully Registered"])

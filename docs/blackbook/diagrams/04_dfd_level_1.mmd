@@ -1,0 +1,85 @@
+flowchart TB
+    %% TrustChain-AI: Data Flow Diagram — Level 1 (Subsystem Decomposition)
+
+    %% External Entities
+    E_User["Human User\n(Admin/Operator/Viewer)"]
+    E_Agent["Autonomous Agent\n(Requester/Worker)"]
+
+    %% Data Stores (SQLite VDR)
+    subgraph DataStores["Verifiable Data Registry (SQLite Stores)"]
+        D1[("D1: users & refresh_tokens")]
+        D2[("D2: agents")]
+        D3[("D3: stored_vcs")]
+        D4[("D4: telemetry_logs")]
+        D5[("D5: agent_trust_states")]
+        D6[("D6: trust_audit_trails")]
+        D7[("D7: collaboration_sessions & events")]
+        D8[("D8: workflows & workflow_nodes")]
+        D9[("D9: security_audit_events")]
+    end
+
+    %% Processes
+    P1(("1.0\nUser Auth & RBAC\nEnforcement"))
+    P2(("2.0\nIdentity & VC\nLifecycle"))
+    P3(("3.0\nAgent Registry\nManagement"))
+    P4(("4.0\nTelemetry Ingestion\n& Validation"))
+    P5(("5.0\nTemporal Trust\nEvaluation Engine"))
+    P6(("6.0\nAdaptive Policy\nEnforcer"))
+    P7(("7.0\nAgent Discovery\n& Matching"))
+    P8(("8.0\nCollaboration &\nWorkflow Engine"))
+    P9(("9.0\nAudit Logging &\nObservability"))
+
+    %% Flows: P1 Auth
+    E_User -->|"Login / Refresh Request"| P1
+    P1 -->|"Write / Validate Token"| D1
+    P1 -->|"Record Security Event"| D9
+    P1 -->|"Issue JWT Access/Refresh Token"| E_User
+
+    %% Flows: P2 Identity & VC
+    E_User -->|"Issue Credential Request"| P2
+    E_Agent -->|"Present Credential Proof"| P2
+    P2 -->|"Store / Retrieve Signed VC"| D3
+    P2 -->|"Verification Status / DID Document"| E_Agent
+
+    %% Flows: P3 Registry
+    E_User -->|"Register Agent (Capabilities, Endpoint)"| P3
+    P3 -->|"Create Agent Profile"| D2
+    P3 -->|"Initialize T=1.0 TRUSTED"| D5
+    P3 -->|"Registration Receipt"| E_User
+
+    %% Flows: P4 Telemetry
+    E_Agent -->|"Submit Task Telemetry (S, C, Latency)"| P4
+    P4 -->|"Store Telemetry Event"| D4
+    P4 -->|"Trigger Trust Re-evaluation"| P5
+
+    %% Flows: P5 Trust Evaluation
+    P5 -->|"Fetch Last 10 Telemetry Records"| D4
+    P5 -->|"Fetch Current T(t-1) State"| D5
+    P5 -->|"Update T(t) and Trust State"| D5
+    P5 -->|"Write Immutable State Transition"| D6
+
+    %% Flows: P6 Adaptive Policy
+    E_Agent -->|"Execute Privileged/Standard Op"| P6
+    P6 -->|"Query Current Trust State"| D5
+    P6 -->|"Log Access Denial / Permission"| D9
+    P6 -->|"Permit / Deny (HTTP 403 / 200)"| P8
+
+    %% Flows: P7 Discovery
+    E_Agent -->|"Discovery Query (Required Capability)"| P7
+    P7 -->|"Filter Active Agents"| D2
+    P7 -->|"Filter Non-Quarantined States"| D5
+    P7 -->|"Return Ranked Candidate List"| E_Agent
+
+    %% Flows: P8 Collaboration & Workflows
+    E_Agent -->|"Initiate Collaboration / Run Workflow"| P8
+    P8 -->|"Gate via Policy Enforcer"| P6
+    P8 -->|"Persist Session & Messages"| D7
+    P8 -->|"Track Workflow Steps & Outputs"| D8
+    P8 -->|"Emit Execution Telemetry"| P4
+    P8 -->|"Execution Outputs / Completed Payload"| E_Agent
+
+    %% Flows: P9 Audit
+    E_User -->|"Audit Query (Security / Trust)"| P9
+    P9 -->|"Read Security Events"| D9
+    P9 -->|"Read Trust Transitions"| D6
+    P9 -->|"Deliver Audit Log Views"| E_User

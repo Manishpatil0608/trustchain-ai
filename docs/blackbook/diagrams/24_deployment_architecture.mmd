@@ -1,0 +1,51 @@
+flowchart TB
+    %% TrustChain-AI: Local Deployment & Process Topology
+
+    subgraph UserTier["User Interface Tier (Client Host)"]
+        Browser["Modern Web Browser (Chrome / Edge / Firefox)\n- Interacts via Single Page Application (SPA)\n- JWT Stored in Memory / LocalStorage\n- Axios HTTP Client with Bearer Interceptor"]
+    end
+
+    subgraph FrontendTier["Frontend Server (Node.js v20 / Vite 8 — Port 5173)"]
+        ViteDev["Vite Dev Server (http://localhost:5173)\n- Hot Module Replacement (HMR)\n- React 19 SPA Build (17 Components)\n- Tailwind CSS 4 & Recharts Bundle"]
+    end
+
+    subgraph BackendTier["Application Tier (Python 3.12 Virtual Environment — Port 8050)"]
+        subgraph UvicornProcess["Uvicorn ASGI Server (http://localhost:8050)"]
+            FastAPIServer["FastAPI Application (v0.141.1)\n- CORS Middleware (Allow Origin 5173)\n- Pydantic v2 Request/Response Validation\n- Dependency Injection Subsystem"]
+            
+            subgraph InProcessModules["In-Process Domain Services"]
+                AuthModule["Authentication & RBAC Service\n(Argon2id, PyJWT 2.14)"]
+                TrustEngineModule["TrustEngine In-Process Service\n(EMA Lambda=0.7, Window=10)"]
+                AdaptiveAuthModule["AdaptivePolicyEnforcer\n(Operation-Level Dynamic Gating)"]
+                AgentConnector["LocalAgentConnector\n(Deterministic Simulation Engine)"]
+                CryptoModule["PyNaCl 1.6 & PyLD 3.2\n(Ed25519 & URDNA2015 Normalization)"]
+            end
+        end
+    end
+
+    subgraph StorageTier["Persistence Tier (Local Host Filesystem)"]
+        SQLiteDB[("SQLite Database: vdr.db\n- Storage Engine: SQLite 3\n- Journal Mode: WAL (Write-Ahead Logging)\n- SQLAlchemy 2.0.52 ORM Connection Pool\n- 13 Relational Tables")]
+        DBWAL[("WAL Journal Files: vdr.db-wal, vdr.db-shm\n- High Concurrency ACID Transactions")]
+    end
+
+    subgraph AgentWorkerTier["Agent Execution Targets"]
+        LocalWorker["In-Process Deterministic Agent Worker\n(Structured Capability Generators)"]
+        RemoteWorker["Optional External Agent Service\n(Outbound HTTP REST Endpoint via httpx)"]
+    end
+
+    %% Network Connections
+    Browser -->|"HTTP / HTML5 / JS"| ViteDev
+    Browser -->|"REST API / HTTP + JWT Bearer (Port 8050)"| FastAPIServer
+    FastAPIServer --> AuthModule
+    FastAPIServer --> TrustEngineModule
+    FastAPIServer --> AdaptiveAuthModule
+    FastAPIServer --> CryptoModule
+    FastAPIServer --> AgentConnector
+
+    AgentConnector -->|"In-Process Call"| LocalWorker
+    AgentConnector -.->|"Outbound HTTP POST"| RemoteWorker
+
+    AuthModule -->|"SQLAlchemy Session"| SQLiteDB
+    TrustEngineModule -->|"SQLAlchemy Session"| SQLiteDB
+    FastAPIServer -->|"SQLAlchemy Session"| SQLiteDB
+    SQLiteDB --- DBWAL

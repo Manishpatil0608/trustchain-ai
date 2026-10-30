@@ -1,0 +1,38 @@
+flowchart TB
+    %% TrustChain-AI: System Context Diagram
+
+    subgraph HumanActors["Human Users (Role-Based Access Control)"]
+        Admin["System Administrator\n- User & Role Administration\n- Security Audit Review\n- Administrative Agent Revocation\n- Full System Configuration"]
+        Operator["Platform Operator\n- Agent Onboarding & Registration\n- Workflow & Session Creation\n- Telemetry Injection & Testing\n- Credential Issuance"]
+        Viewer["Auditor / Viewer\n- Read-Only Dashboard Access\n- Trust Score & Trend Monitoring\n- Public System Health Inspection"]
+    end
+
+    subgraph MachineActors["Machine Actors (Cryptographic DID:key Identity)"]
+        RequesterAgent["Requester / Orchestrator Agent\n- Requests Capability Discovery\n- Initiates Collaboration Sessions\n- Orchestrates Multi-Step Workflows\n- Presents Verifiable Credentials"]
+        TargetAgent["Target / Worker Agent\n- Executes Capability Tasks\n- Emits Behavioral Telemetry\n- Subject to Continuous Trust Scoring\n- Gated by Adaptive Authorization"]
+    end
+
+    subgraph TrustChainBoundary["TrustChain-AI Platform Boundary"]
+        Frontend["Web Dashboard & Visualizer\n(React 19 / Vite — http://localhost:5173)"]
+        APIServer["API Gateway & Services\n(FastAPI / Uvicorn — http://localhost:8050)"]
+        TrustCore["Trust Intelligence & Policy Core\n(EMA Scoring, Adaptive Authorization, Match Engine)"]
+        CryptoEngine["Identity & Credential Engine\n(PyNaCl Ed25519, W3C DID:key, PyLD URDNA2015)"]
+        LocalVDR[("Local Verifiable Data Registry\n(SQLite vdr.db in WAL Mode — 13 Relational Tables)")]
+    end
+
+    %% Human interactions via Frontend
+    Admin -->|"HTTPS / Web Browser (ADMIN Role)"| Frontend
+    Operator -->|"HTTPS / Web Browser (OPERATOR Role)"| Frontend
+    Viewer -->|"HTTPS / Web Browser (VIEWER Role)"| Frontend
+
+    %% Machine interactions via REST API
+    RequesterAgent -->|"REST API / HTTP + JWT Bearer / DID"| APIServer
+    TargetAgent -->|"Task Responses & Telemetry / HTTP"| APIServer
+
+    %% Internal platform data flows
+    Frontend -->|"REST API Requests (JWT Auth Header)"| APIServer
+    APIServer --> TrustCore
+    APIServer --> CryptoEngine
+    TrustCore --> LocalVDR
+    CryptoEngine --> LocalVDR
+    APIServer --> LocalVDR
