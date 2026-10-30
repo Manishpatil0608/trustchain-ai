@@ -33,7 +33,7 @@ click>=8.1.0
 # Testing & Verification
 pytest>=8.0.0
 pytest-mock>=3.14.0
-anyio>=4.0.0
+anyio>=4.14.2
 
 # Research, Analytics & Deliverable Generation
 matplotlib>=3.9.0
